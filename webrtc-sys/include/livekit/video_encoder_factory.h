@@ -53,7 +53,8 @@ class VideoEncoderFactory : public webrtc::VideoEncoderFactory {
   };
 
  public:
-  VideoEncoderFactory();
+  explicit VideoEncoderFactory(
+      bool software_h264_external_frame_dropper = false);
 
   std::vector<webrtc::SdpVideoFormat> GetSupportedFormats() const override;
 
@@ -68,5 +69,6 @@ class VideoEncoderFactory : public webrtc::VideoEncoderFactory {
 
  private:
   std::unique_ptr<InternalFactory> internal_factory_;
+  const bool software_h264_external_frame_dropper_;
 };
 }  // namespace livekit_ffi

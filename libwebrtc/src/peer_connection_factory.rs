@@ -83,7 +83,72 @@ impl Debug for PeerConnectionFactory {
     }
 }
 
+/// Per-factory video sender policy. Defaults preserve upstream behavior.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct VideoSendOptions {
+    /// Minimum RTP playout delay; nonzero requires an explicit maximum.
+    pub min_playout_delay_ms: u32,
+    pub max_playout_delay_ms: Option<u32>,
+    pub pacing_factor: Option<f32>,
+    /// Let WebRTC schedule frame drops for single-stream software H.264.
+    /// OpenH264 still controls quantization; its internal consecutive frame
+    /// skipping is disabled. Congestion control and WebRTC's dropper stay on.
+    pub software_h264_external_frame_dropper: bool,
+}
+
 impl PeerConnectionFactory {
+    /// Creates a native factory with optional video sender timing hints.
+    ///
+    /// `max_playout_delay_ms` sends an RTP playout-delay range of 0..max when
+    /// negotiated. The receiver applies it on a best-effort basis. Values must
+    /// be multiples of 10 ms in 0..=40950. `pacing_factor` controls packet burst
+    /// pacing relative to the bandwidth estimate (1.0..=2.5), without changing
+    /// encoder bitrate limits or disabling congestion control. None preserves
+    /// WebRTC's defaults. Options are scoped to this factory.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn with_video_send_timing(
+        max_playout_delay_ms: Option<u32>,
+        pacing_factor: Option<f32>,
+    ) -> Result<Self, RtcError> {
+        Self::with_video_send_options(VideoSendOptions {
+            max_playout_delay_ms,
+            pacing_factor,
+            ..Default::default()
+        })
+    }
+
+    /// Creates a native factory with explicit sender and software H.264 policy.
+    /// Timing ranges follow [`Self::with_video_send_timing`]. The minimum may
+    /// also be set in 10 ms units, and must not exceed the explicit maximum.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn with_video_send_options(options: VideoSendOptions) -> Result<Self, RtcError> {
+        let VideoSendOptions {
+            min_playout_delay_ms,
+            max_playout_delay_ms,
+            pacing_factor,
+            software_h264_external_frame_dropper,
+        } = options;
+        if min_playout_delay_ms % 10 != 0
+            || min_playout_delay_ms > max_playout_delay_ms.unwrap_or(0)
+            || max_playout_delay_ms.is_some_and(|ms| ms > 40950 || ms % 10 != 0)
+            || pacing_factor
+                .is_some_and(|factor| !factor.is_finite() || !(1.0..=2.5).contains(&factor))
+        {
+            return Err(RtcError {
+                error_type: crate::RtcErrorType::Internal,
+                message: "Invalid video sender timing options".into(),
+            });
+        }
+        Ok(Self {
+            handle: imp_pcf::PeerConnectionFactory::with_video_send_timing(
+                min_playout_delay_ms,
+                max_playout_delay_ms,
+                pacing_factor,
+                software_h264_external_frame_dropper,
+            ),
+        })
+    }
+
     /// Creates a native peer connection factory that renders received video as soon as possible.
     #[cfg(not(target_arch = "wasm32"))]
     pub fn with_zero_playout_delay() -> Self {

@@ -50,6 +50,13 @@ class PeerConnectionFactory {
   PeerConnectionFactory(std::shared_ptr<RtcRuntime> rtc_runtime,
                         bool zero_playout_delay,
                         bool enable_warp);
+  PeerConnectionFactory(std::shared_ptr<RtcRuntime> rtc_runtime,
+                        bool zero_playout_delay,
+                        bool enable_warp,
+                        int32_t min_send_playout_delay_ms,
+                        int32_t max_send_playout_delay_ms,
+                        float video_pacing_factor,
+                        bool software_h264_external_frame_dropper);
   ~PeerConnectionFactory();
 
   std::shared_ptr<PeerConnection> create_peer_connection(
@@ -95,4 +102,9 @@ create_peer_connection_factory_with_zero_playout_delay();
 std::shared_ptr<PeerConnectionFactory>
 create_peer_connection_factory_with_options(bool zero_playout_delay,
                                             bool enable_warp);
+std::shared_ptr<PeerConnectionFactory>
+create_peer_connection_factory_with_video_send_timing(
+    int32_t min_playout_delay_ms, int32_t max_playout_delay_ms,
+    float pacing_factor,
+    bool software_h264_external_frame_dropper);
 }  // namespace livekit_ffi

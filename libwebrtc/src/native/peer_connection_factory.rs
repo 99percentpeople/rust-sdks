@@ -59,6 +59,22 @@ impl Default for PeerConnectionFactory {
 }
 
 impl PeerConnectionFactory {
+    pub fn with_video_send_timing(
+        min_playout_delay_ms: u32,
+        max_playout_delay_ms: Option<u32>,
+        pacing_factor: Option<f32>,
+        software_h264_external_frame_dropper: bool,
+    ) -> Self {
+        ensure_log_sink();
+        let sys_handle = sys_pcf::ffi::create_peer_connection_factory_with_video_send_timing(
+            min_playout_delay_ms as i32,
+            max_playout_delay_ms.map_or(-1, |ms| ms as i32),
+            pacing_factor.unwrap_or(0.0),
+            software_h264_external_frame_dropper,
+        );
+        Self { sys_handle }
+    }
+
     /// Creates a [`PeerConnectionFactory`] with the WebRTC-ForcePlayoutDelay field trial enabled.
     pub fn with_zero_playout_delay() -> Self {
         ensure_log_sink();

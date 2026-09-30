@@ -590,7 +590,10 @@ VideoEncoderFactory::InternalFactory::Create(
   return nullptr;
 }
 
-VideoEncoderFactory::VideoEncoderFactory() {
+VideoEncoderFactory::VideoEncoderFactory(
+    bool software_h264_external_frame_dropper)
+    : software_h264_external_frame_dropper_(
+          software_h264_external_frame_dropper) {
   internal_factory_ = std::make_unique<InternalFactory>();
 }
 
@@ -623,8 +626,10 @@ namespace {
 class EncodedFrameGuardEncoder final : public webrtc::VideoEncoder {
  public:
   explicit EncodedFrameGuardEncoder(
-      std::unique_ptr<webrtc::VideoEncoder> encoder)
-      : encoder_(std::move(encoder)) {}
+      std::unique_ptr<webrtc::VideoEncoder> encoder,
+      bool external_h264_frame_dropper)
+      : encoder_(std::move(encoder)),
+        external_h264_frame_dropper_(external_h264_frame_dropper) {}
 
   void SetFecControllerOverride(
       webrtc::FecControllerOverride* fec_controller_override) override {
@@ -633,6 +638,20 @@ class EncodedFrameGuardEncoder final : public webrtc::VideoEncoder {
 
   int InitEncode(const webrtc::VideoCodec* codec_settings,
                  const Settings& settings) override {
+    external_frame_dropper_active_ =
+        external_h264_frame_dropper_ && codec_settings &&
+        codec_settings->codecType == webrtc::kVideoCodecH264 &&
+        codec_settings->mode == webrtc::VideoCodecMode::kRealtimeVideo &&
+        codec_settings->numberOfSimulcastStreams <= 1;
+    if (external_frame_dropper_active_) {
+      // OpenH264 can repay scene-cut bursts by skipping several consecutive
+      // frames. Let the outer WebRTC dropper schedule those drops instead.
+      // Only the codec's copy changes: keep the sender's frame dropper,
+      // bitrate adjustment, congestion control and pacing enabled.
+      auto adjusted = *codec_settings;
+      adjusted.SetFrameDropEnabled(false);
+      return encoder_->InitEncode(&adjusted, settings);
+    }
     return encoder_->InitEncode(codec_settings, settings);
   }
 
@@ -675,11 +694,19 @@ class EncodedFrameGuardEncoder final : public webrtc::VideoEncoder {
   }
 
   EncoderInfo GetEncoderInfo() const override {
-    return encoder_->GetEncoderInfo();
+    auto info = encoder_->GetEncoderInfo();
+    if (external_frame_dropper_active_) {
+      // A trusted controller bypasses WebRTC's dropper. Keep it active when
+      // delegating drops out of the codec, including after upstream upgrades.
+      info.has_trusted_rate_controller = false;
+    }
+    return info;
   }
 
  private:
   std::unique_ptr<webrtc::VideoEncoder> encoder_;
+  const bool external_h264_frame_dropper_;
+  bool external_frame_dropper_active_ = false;
 };
 
 }  // namespace
@@ -695,7 +722,10 @@ std::unique_ptr<webrtc::VideoEncoder> VideoEncoderFactory::Create(
 
   if (encoder &&
       BackendFromFormat(format) != VideoEncoderBackend::PreEncoded) {
-    encoder = std::make_unique<EncodedFrameGuardEncoder>(std::move(encoder));
+    encoder = std::make_unique<EncodedFrameGuardEncoder>(
+        std::move(encoder),
+        software_h264_external_frame_dropper_ &&
+            BackendFromFormat(format) == VideoEncoderBackend::Software);
   }
 
   return encoder;
