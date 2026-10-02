@@ -55,3 +55,14 @@ This is factory-local and adds neither a software encoder nor a decoder. Default
 factories, capability queries for software and ordinary sender options keep their
 existing behavior. Validate repeated factory/session creation, cancelled offers,
 real HEVC RTP decode, keyframe recovery and live settings on supported hardware.
+
+The pre-encoded backend reports a trusted external rate controller, disabling
+WebRTC's encoder-input rate dropper for these already-compressed frames. Dropping
+them after external encoding can break inter-frame references. Applications must
+honor `take_rate_control_request`, measure actual output, and skip raw input before
+encoding when the hardware overshoots its accepted target. This applies to every
+pass-through codec, including H264 and H265; software encoders keep their policies.
+Bandwidth feedback, RTP pacing and transport congestion control remain active.
+When upgrading, additionally compare `webrtc-sys/src/passthrough_video_encoder.cpp`
+and `libwebrtc/src/native/video_source.rs`, and test full-frame motion under both
+constrained and sufficient bitrate budgets.

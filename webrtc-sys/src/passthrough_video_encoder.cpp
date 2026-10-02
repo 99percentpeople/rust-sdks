@@ -331,6 +331,10 @@ class PassthroughVideoEncoder final : public VideoEncoder {
     info.supports_native_handle = true;
     info.implementation_name = "LiveKit pre-encoded passthrough";
     info.scaling_settings = VideoEncoder::ScalingSettings::kOff;
+    // Frames already contain an inter-frame bitstream. Dropping them here
+    // breaks references; rate control must run before external encoding.
+    // SetRates still forwards the congestion-controlled target to the source.
+    info.has_trusted_rate_controller = true;
     info.is_hardware_accelerated = false;
     info.supports_simulcast = false;
     info.preferred_pixel_formats = {VideoFrameBuffer::Type::kNative};

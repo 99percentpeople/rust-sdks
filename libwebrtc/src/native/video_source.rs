@@ -176,6 +176,13 @@ impl NativeVideoSource {
         )
     }
 
+    /// Submits a complete frame from an external encoder.
+    ///
+    /// The caller must obey [`Self::take_rate_control_request`] before encoding,
+    /// including skipping raw inputs when its encoder exceeds the target bitrate.
+    /// The pass-through disables WebRTC's encoder-input rate dropper: these frames
+    /// already carry reference dependencies and cannot be dropped like raw input.
+    /// Transport congestion control and pacing remain active.
     pub fn capture_encoded_frame(&self, frame: &EncodedVideoFrame<'_>) -> bool {
         let (has_trailer, user_ts, fid, user_data) = match &frame.frame_metadata {
             Some(meta) => (
