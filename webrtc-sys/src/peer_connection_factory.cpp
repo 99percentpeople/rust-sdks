@@ -45,6 +45,7 @@
 #include "livekit/video_encoder_factory.h"
 #include "livekit/webrtc.h"
 #include "rtc_base/thread.h"
+#include "rtc_base/experiments/rate_control_settings.h"
 #include "webrtc-sys/src/peer_connection.rs.h"
 #include "webrtc-sys/src/peer_connection_factory.rs.h"
 
@@ -71,9 +72,9 @@ class ZeroPlayoutDelayFieldTrials final : public webrtc::FieldTrialsView {
 class VideoSendTimingFieldTrials final : public webrtc::FieldTrialsView {
  public:
   VideoSendTimingFieldTrials(int32_t min_delay_ms, int32_t max_delay_ms,
-                            float pacing_factor)
+                            float pacing_factor, bool periodic_alr_probing)
       : min_delay_ms_(min_delay_ms), max_delay_ms_(max_delay_ms),
-        pacing_factor_(pacing_factor) {}
+        pacing_factor_(pacing_factor), periodic_alr_probing_(periodic_alr_probing) {}
   std::string Lookup(absl::string_view key) const override {
     if (key == "WebRTC-ForceSendPlayoutDelay" && max_delay_ms_ >= 0) {
       return "min_ms:" + std::to_string(min_delay_ms_) +
@@ -82,16 +83,23 @@ class VideoSendTimingFieldTrials final : public webrtc::FieldTrialsView {
     if (key == "WebRTC-Video-Pacing" && pacing_factor_ > 0) {
       return "factor:" + std::to_string(pacing_factor_);
     }
+    if (key == "WebRTC-VideoRateControl" && periodic_alr_probing_) {
+      // Camera-mode external encoders do not inherit screenshare's ALR
+      // probing defaults. Enable recovery probes without changing their
+      // codec preset, pacing factor, or congestion-controlled bitrate.
+      return "alr_probing:true";
+    }
     return "";
   }
   std::unique_ptr<webrtc::FieldTrialsView> CreateCopy() const override {
     return std::make_unique<VideoSendTimingFieldTrials>(min_delay_ms_, max_delay_ms_,
-                                                       pacing_factor_);
+                                                       pacing_factor_, periodic_alr_probing_);
   }
  private:
   int32_t min_delay_ms_;
   int32_t max_delay_ms_;
   float pacing_factor_;
+  bool periodic_alr_probing_;
 };
 
 // Enables SPED (DTLS-in-STUN) via the WebRTC-IceHandshakeDtls field trial.
@@ -154,7 +162,8 @@ webrtc::Environment CreateEnvironment(bool zero_playout_delay,
                                       bool enable_warp,
                                       int32_t min_send_playout_delay_ms,
                                       int32_t max_send_playout_delay_ms,
-                                      float video_pacing_factor) {
+                                      float video_pacing_factor,
+                                      bool periodic_alr_probing) {
   std::vector<std::unique_ptr<webrtc::FieldTrialsView>> views;
   if (zero_playout_delay) {
     views.push_back(std::make_unique<ZeroPlayoutDelayFieldTrials>());
@@ -162,9 +171,10 @@ webrtc::Environment CreateEnvironment(bool zero_playout_delay,
   if (enable_warp) {
     views.push_back(std::make_unique<EnableWarpFieldTrials>());
   }
-  if (max_send_playout_delay_ms >= 0 || video_pacing_factor > 0) {
+  if (max_send_playout_delay_ms >= 0 || video_pacing_factor > 0 || periodic_alr_probing) {
     views.push_back(std::make_unique<VideoSendTimingFieldTrials>(
-        min_send_playout_delay_ms, max_send_playout_delay_ms, video_pacing_factor));
+        min_send_playout_delay_ms, max_send_playout_delay_ms, video_pacing_factor,
+        periodic_alr_probing));
   }
 
   if (views.empty()) {
@@ -201,11 +211,12 @@ PeerConnectionFactory::PeerConnectionFactory(
     int32_t min_send_playout_delay_ms,
     int32_t max_send_playout_delay_ms,
     float video_pacing_factor,
-    bool software_h264_external_frame_dropper, bool external_hevc)
+    bool software_h264_external_frame_dropper, bool external_hevc,
+    bool periodic_alr_probing)
     : rtc_runtime_(rtc_runtime),
       env_(CreateEnvironment(zero_playout_delay, enable_warp,
                              min_send_playout_delay_ms, max_send_playout_delay_ms,
-                             video_pacing_factor)) {
+                             video_pacing_factor, periodic_alr_probing)) {
   webrtc::PeerConnectionFactoryDependencies dependencies;
   dependencies.network_thread = rtc_runtime_->network_thread();
   dependencies.worker_thread = rtc_runtime_->worker_thread();
@@ -335,6 +346,10 @@ bool PeerConnectionFactory::zero_playout_delay_enabled() const {
          kForcePlayoutDelayValue;
 }
 
+bool PeerConnectionFactory::periodic_alr_probing_enabled() const {
+  return webrtc::RateControlSettings(env_.field_trials()).UseAlrProbing();
+}
+
 std::shared_ptr<PeerConnectionFactory> create_peer_connection_factory() {
   return std::make_shared<PeerConnectionFactory>(RtcRuntime::create());
 }
@@ -362,6 +377,17 @@ create_peer_connection_factory_with_video_send_timing(
                                                 max_playout_delay_ms,
                                                 pacing_factor,
                                                 software_h264_external_frame_dropper, external_hevc);
+}
+
+std::shared_ptr<PeerConnectionFactory>
+create_peer_connection_factory_with_screen_video_send_options(
+    int32_t min_playout_delay_ms, int32_t max_playout_delay_ms,
+    float pacing_factor,
+    bool software_h264_external_frame_dropper, bool external_hevc) {
+  return std::make_shared<PeerConnectionFactory>(
+      RtcRuntime::create(), false, false, min_playout_delay_ms,
+      max_playout_delay_ms, pacing_factor,
+      software_h264_external_frame_dropper, external_hevc, true);
 }
 
 }  // namespace livekit_ffi

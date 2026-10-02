@@ -134,6 +134,8 @@ pub mod ffi {
 
         fn set_configuration(self: &PeerConnection, config: RtcConfiguration) -> Result<()>;
 
+        fn set_max_bitrate(self: &PeerConnection, bitrate_bps: u32) -> Result<()>;
+
         fn create_offer(
             self: &PeerConnection,
             options: RtcOfferAnswerOptions,

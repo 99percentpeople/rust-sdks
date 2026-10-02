@@ -56,7 +56,8 @@ class PeerConnectionFactory {
                         int32_t min_send_playout_delay_ms,
                         int32_t max_send_playout_delay_ms,
                         float video_pacing_factor,
-                        bool software_h264_external_frame_dropper, bool external_hevc);
+                        bool software_h264_external_frame_dropper, bool external_hevc,
+                        bool periodic_alr_probing = false);
   ~PeerConnectionFactory();
 
   std::shared_ptr<PeerConnection> create_peer_connection(
@@ -83,6 +84,7 @@ class PeerConnectionFactory {
   std::shared_ptr<RtcRuntime> rtc_runtime() const { return rtc_runtime_; }
   std::shared_ptr<AudioDeviceController> audio_device() const;
   bool zero_playout_delay_enabled() const;
+  bool periodic_alr_probing_enabled() const;
 
  private:
   // Declaration order matters: rtc_runtime_ must be declared before
@@ -104,6 +106,11 @@ create_peer_connection_factory_with_options(bool zero_playout_delay,
                                             bool enable_warp);
 std::shared_ptr<PeerConnectionFactory>
 create_peer_connection_factory_with_video_send_timing(
+    int32_t min_playout_delay_ms, int32_t max_playout_delay_ms,
+    float pacing_factor,
+    bool software_h264_external_frame_dropper, bool external_hevc);
+std::shared_ptr<PeerConnectionFactory>
+create_peer_connection_factory_with_screen_video_send_options(
     int32_t min_playout_delay_ms, int32_t max_playout_delay_ms,
     float pacing_factor,
     bool software_h264_external_frame_dropper, bool external_hevc);

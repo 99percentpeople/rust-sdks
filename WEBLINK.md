@@ -31,10 +31,34 @@ in `crates/desktop-capture/src/media/windows.rs`. These settings preserve WebRTC
 bandwidth estimation, retransmission and congestion control. The playout hint
 does not impose a network deadline or guarantee end-to-end latency.
 
+`with_screen_video_send_options` additionally enables periodic ALR bandwidth
+probing using `WebRTC-VideoRateControl`. The application's hardware pass-through
+and real-time H264 sources use camera mode and otherwise miss screenshare's
+default probes when activity falls below the estimated capacity. This opt-in
+allows WebRTC to probe for recovery without a forced bitrate floor, changing the
+codec preset, or replacing the chosen pacing policy. Default constructors keep
+their prior behavior. Validate idle-to-motion and congestion recovery separately
+from actual encoded bitrate: easy content may remain far below the budget.
+
+`PeerConnection::set_max_bitrate` sets the native transport's total media ceiling,
+separately from each RTP encoding's maximum. Apply it before negotiation and when
+changing the budget, including any audio allocation. With no finite transport
+ceiling, the bundled engine's `ProbeController` defaults to a 5 Mbps probe limit;
+an RTP encoding limit alone does not replace that fallback. This is a limit on
+probing, not a hard cap on achieved media throughput. The API changes only the
+maximum: it neither imposes a minimum rate nor resets the starting estimate.
+GCC can still reduce the target in response to congestion. Periodic ALR probing
+retains the engine's default cadence and scale.
+
 The patch changes only these upstream files:
 
 - `libwebrtc/src/peer_connection_factory.rs`
+- `libwebrtc/src/peer_connection.rs`
+- `libwebrtc/src/native/peer_connection.rs`
 - `libwebrtc/src/native/peer_connection_factory.rs`
+- `webrtc-sys/src/peer_connection.rs`
+- `webrtc-sys/src/peer_connection.cpp`
+- `webrtc-sys/include/livekit/peer_connection.h`
 - `webrtc-sys/src/peer_connection_factory.rs`
 - `webrtc-sys/src/peer_connection_factory.cpp`
 - `webrtc-sys/include/livekit/peer_connection_factory.h`

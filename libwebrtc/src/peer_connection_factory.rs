@@ -122,7 +122,7 @@ impl PeerConnectionFactory {
     /// also be set in 10 ms units, and must not exceed the explicit maximum.
     #[cfg(not(target_arch = "wasm32"))]
     pub fn with_video_send_options(options: VideoSendOptions) -> Result<Self, RtcError> {
-        Self::with_video_send_policy(options, false)
+        Self::with_video_send_policy(options, false, false)
     }
 
     /// Advertises H.265 Main 8-bit for externally encoded native frames in this factory.
@@ -133,20 +133,30 @@ impl PeerConnectionFactory {
     pub fn with_external_hevc_video_send_options(
         options: VideoSendOptions,
     ) -> Result<Self, RtcError> {
-        Self::with_video_send_policy(options, true)
+        Self::with_video_send_policy(options, true, false)
+    }
+
+    /// Creates a screen sender with periodic bandwidth probes during low activity.
+    /// Probes allow recovery after idle or congestion without imposing a minimum
+    /// bitrate. Pacing, feedback and the sender's maximum bitrate remain active.
+    /// Set `external_hevc` only with an available external encoder, as described
+    /// by [`Self::with_external_hevc_video_send_options`].
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn with_screen_video_send_options(
+        options: VideoSendOptions,
+        external_hevc: bool,
+    ) -> Result<Self, RtcError> {
+        Self::with_video_send_policy(options, external_hevc, true)
     }
 
     #[cfg(not(target_arch = "wasm32"))]
     fn with_video_send_policy(
         options: VideoSendOptions,
         external_hevc: bool,
+        periodic_alr_probing: bool,
     ) -> Result<Self, RtcError> {
-        let VideoSendOptions {
-            min_playout_delay_ms,
-            max_playout_delay_ms,
-            pacing_factor,
-            software_h264_external_frame_dropper,
-        } = options;
+        let VideoSendOptions { min_playout_delay_ms, max_playout_delay_ms, pacing_factor, .. } =
+            options;
         if min_playout_delay_ms % 10 != 0
             || min_playout_delay_ms > max_playout_delay_ms.unwrap_or(0)
             || max_playout_delay_ms.is_some_and(|ms| ms > 40950 || ms % 10 != 0)
@@ -159,12 +169,10 @@ impl PeerConnectionFactory {
             });
         }
         Ok(Self {
-            handle: imp_pcf::PeerConnectionFactory::with_video_send_timing(
-                min_playout_delay_ms,
-                max_playout_delay_ms,
-                pacing_factor,
-                software_h264_external_frame_dropper,
+            handle: imp_pcf::PeerConnectionFactory::with_video_send_policy(
+                options,
                 external_hevc,
+                periodic_alr_probing,
             ),
         })
     }
@@ -203,7 +211,25 @@ impl PeerConnectionFactory {
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests {
-    use super::PeerConnectionFactory;
+    use super::{PeerConnectionFactory, VideoSendOptions};
+
+    #[test]
+    fn screen_probing_is_factory_local_and_does_not_change_default_policy() {
+        for _ in 0..3 {
+            let ordinary =
+                PeerConnectionFactory::with_video_send_options(VideoSendOptions::default())
+                    .unwrap();
+            let screen = PeerConnectionFactory::with_screen_video_send_options(
+                VideoSendOptions::default(),
+                false,
+            )
+            .unwrap();
+            assert!(!ordinary.handle.periodic_alr_probing_enabled());
+            assert!(screen.handle.periodic_alr_probing_enabled());
+            drop(screen);
+            assert!(!ordinary.handle.periodic_alr_probing_enabled());
+        }
+    }
 
     #[test]
     fn zero_playout_delay_factory_uses_force_playout_delay_field_trial() {

@@ -17,6 +17,7 @@
 #include "livekit/peer_connection.h"
 #include "livekit/peer_connection_factory.h"
 
+#include <limits>
 #include <memory>
 
 #include "api/data_channel_interface.h"
@@ -107,6 +108,23 @@ void PeerConnection::set_configuration(RtcConfiguration config) const {
   auto result =
       peer_connection_->SetConfiguration(to_native_rtc_configuration(config));
 
+  if (!result.ok()) {
+    throw std::runtime_error(serialize_error(to_error(result)));
+  }
+}
+
+void PeerConnection::set_max_bitrate(uint32_t bitrate_bps) const {
+  if (bitrate_bps == 0 ||
+      bitrate_bps > static_cast<uint32_t>(std::numeric_limits<int>::max())) {
+    throw std::runtime_error(serialize_error(to_error(webrtc::RTCError(
+        webrtc::RTCErrorType::INVALID_PARAMETER,
+        "Maximum bitrate must be between 1 and INT_MAX bits per second"))));
+  }
+  // Set only the ceiling: a start rate here would reset bandwidth estimation
+  // whenever the application changes its maximum bitrate.
+  webrtc::BitrateSettings settings;
+  settings.max_bitrate_bps = static_cast<int>(bitrate_bps);
+  auto result = peer_connection_->SetBitrate(settings);
   if (!result.ok()) {
     throw std::runtime_error(serialize_error(to_error(result)));
   }

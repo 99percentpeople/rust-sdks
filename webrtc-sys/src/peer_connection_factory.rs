@@ -96,8 +96,17 @@ pub mod ffi {
         ) -> SharedPtr<PeerConnectionFactory>;
 
         fn zero_playout_delay_enabled(self: &PeerConnectionFactory) -> bool;
+        fn periodic_alr_probing_enabled(self: &PeerConnectionFactory) -> bool;
 
         fn create_peer_connection_factory_with_video_send_timing(
+            min_playout_delay_ms: i32,
+            max_playout_delay_ms: i32,
+            pacing_factor: f32,
+            software_h264_external_frame_dropper: bool,
+            external_hevc: bool,
+        ) -> SharedPtr<PeerConnectionFactory>;
+
+        fn create_peer_connection_factory_with_screen_video_send_options(
             min_playout_delay_ms: i32,
             max_playout_delay_ms: i32,
             pacing_factor: f32,

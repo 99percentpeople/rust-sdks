@@ -59,22 +59,30 @@ impl Default for PeerConnectionFactory {
 }
 
 impl PeerConnectionFactory {
-    pub fn with_video_send_timing(
-        min_playout_delay_ms: u32,
-        max_playout_delay_ms: Option<u32>,
-        pacing_factor: Option<f32>,
-        software_h264_external_frame_dropper: bool,
+    pub(crate) fn with_video_send_policy(
+        options: crate::peer_connection_factory::VideoSendOptions,
         external_hevc: bool,
+        periodic_alr_probing: bool,
     ) -> Self {
         ensure_log_sink();
-        let sys_handle = sys_pcf::ffi::create_peer_connection_factory_with_video_send_timing(
-            min_playout_delay_ms as i32,
-            max_playout_delay_ms.map_or(-1, |ms| ms as i32),
-            pacing_factor.unwrap_or(0.0),
-            software_h264_external_frame_dropper,
+        let create = if periodic_alr_probing {
+            sys_pcf::ffi::create_peer_connection_factory_with_screen_video_send_options
+        } else {
+            sys_pcf::ffi::create_peer_connection_factory_with_video_send_timing
+        };
+        let sys_handle = create(
+            options.min_playout_delay_ms as i32,
+            options.max_playout_delay_ms.map_or(-1, |ms| ms as i32),
+            options.pacing_factor.unwrap_or(0.0),
+            options.software_h264_external_frame_dropper,
             external_hevc,
         );
         Self { sys_handle }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn periodic_alr_probing_enabled(&self) -> bool {
+        self.sys_handle.periodic_alr_probing_enabled()
     }
 
     /// Creates a [`PeerConnectionFactory`] with the WebRTC-ForcePlayoutDelay field trial enabled.

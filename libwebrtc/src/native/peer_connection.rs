@@ -194,6 +194,14 @@ impl PeerConnection {
         }
     }
 
+    /// Updates the transport ceiling without changing its minimum or start rate.
+    pub(crate) fn set_max_bitrate(&self, bitrate_bps: u32) -> Result<(), RtcError> {
+        self.sys_handle.set_max_bitrate(bitrate_bps).map_err(|e| {
+            // SAFETY: the C++ bridge serializes RTC errors into this exception.
+            unsafe { sys_err::ffi::RtcError::from(e.what()).into() }
+        })
+    }
+
     pub async fn create_offer(
         &self,
         options: OfferOptions,

@@ -115,6 +115,18 @@ impl PeerConnection {
         self.handle.set_configuration(config)
     }
 
+    /// Sets the native connection's total media bitrate ceiling in bits per second.
+    ///
+    /// Unlike an RTP encoding limit, this also bounds transport bandwidth probes.
+    /// Include all sending audio/video streams in the budget. The value must be
+    /// between 1 and `i32::MAX`; invalid values and closed connections return an
+    /// error. This leaves the minimum and starting bitrate unchanged, so it does
+    /// not force throughput or reset the current bandwidth estimate.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn set_max_bitrate(&self, bitrate_bps: u32) -> Result<(), RtcError> {
+        self.handle.set_max_bitrate(bitrate_bps)
+    }
+
     pub async fn create_offer(
         &self,
         options: OfferOptions,
@@ -277,6 +289,24 @@ mod tests {
     use tokio::sync::mpsc;
 
     use crate::{peer_connection::*, peer_connection_factory::*};
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn transport_max_bitrate_validates_updates_and_closed_connections() {
+        for _ in 0..3 {
+            let factory = PeerConnectionFactory::default();
+            let pc = factory.create_peer_connection(RtcConfiguration::default()).unwrap();
+            pc.set_max_bitrate(150_000_000).unwrap();
+            assert!(pc.set_max_bitrate(0).is_err());
+            assert!(pc.set_max_bitrate(u32::MAX).is_err());
+            pc.set_max_bitrate(8_000_000).unwrap();
+            pc.set_max_bitrate(150_000_000).unwrap();
+            pc.close();
+            assert!(pc.set_max_bitrate(8_000_000).is_err());
+            drop(pc);
+            drop(factory);
+        }
+    }
 
     #[tokio::test]
     async fn create_pc() {
