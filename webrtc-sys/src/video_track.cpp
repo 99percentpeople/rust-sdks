@@ -301,6 +301,17 @@ EncodedRateControlRequest VideoTrackSource::take_rate_control_request() const {
                                    request.framerate_fps};
 }
 
+void VideoTrackSource::set_rate_control_wakeup(
+    rust::Box<RateControlWakeup> wakeup) const {
+  auto callback = std::make_shared<rust::Box<RateControlWakeup>>(std::move(wakeup));
+  source_->rate_control_state()->SetWakeup(
+      [callback]() { (*callback)->wake(); });
+}
+
+void VideoTrackSource::clear_rate_control_wakeup() const {
+  source_->rate_control_state()->SetWakeup(nullptr);
+}
+
 void VideoTrackSource::set_packet_trailer_handler(
     std::shared_ptr<PacketTrailerHandler> handler) const {
   source_->set_packet_trailer_handler(std::move(handler));

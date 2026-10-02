@@ -126,6 +126,8 @@ pub mod ffi {
         ) -> bool;
         fn take_keyframe_request(self: &VideoTrackSource) -> bool;
         fn take_rate_control_request(self: &VideoTrackSource) -> EncodedRateControlRequest;
+        fn set_rate_control_wakeup(self: &VideoTrackSource, wakeup: Box<RateControlWakeup>);
+        fn clear_rate_control_wakeup(self: &VideoTrackSource);
         fn set_packet_trailer_handler(
             self: &VideoTrackSource,
             handler: SharedPtr<PacketTrailerHandler>,
@@ -140,6 +142,9 @@ pub mod ffi {
     }
 
     extern "Rust" {
+        type RateControlWakeup;
+        fn wake(self: &RateControlWakeup);
+
         type VideoSinkWrapper;
 
         fn on_frame(self: &VideoSinkWrapper, frame: UniquePtr<VideoFrame>);
@@ -154,6 +159,22 @@ pub mod ffi {
 impl_thread_safety!(ffi::VideoTrack, Send + Sync);
 impl_thread_safety!(ffi::NativeVideoSink, Send + Sync);
 impl_thread_safety!(ffi::VideoTrackSource, Send + Sync);
+
+/// Nonblocking notification for an external encoder's rate-control mailbox.
+pub struct RateControlWakeup {
+    callback: Arc<dyn Fn() + Send + Sync>,
+}
+
+impl RateControlWakeup {
+    /// Wrap a callback that does not strongly retain its owning source.
+    pub fn new(callback: Arc<dyn Fn() + Send + Sync>) -> Self {
+        Self { callback }
+    }
+
+    fn wake(&self) {
+        (self.callback)();
+    }
+}
 
 pub trait VideoSink: Send {
     fn on_frame(&self, frame: UniquePtr<VideoFrame>);

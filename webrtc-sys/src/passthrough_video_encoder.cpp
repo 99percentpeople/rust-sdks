@@ -209,6 +209,9 @@ class PassthroughVideoEncoder final : public VideoEncoder {
 
   int32_t Release() override {
     encoded_image_callback_ = nullptr;
+    webrtc::MutexLock lock(&rate_control_mutex_);
+    rate_control_state_.reset();
+    latest_rate_control_request_.reset();
     return WEBRTC_VIDEO_CODEC_OK;
   }
 
@@ -235,7 +238,7 @@ class PassthroughVideoEncoder final : public VideoEncoder {
           << "PassthroughVideoEncoder frame codec does not match sender codec";
       return WEBRTC_VIDEO_CODEC_ERR_PARAMETER;
     }
-    ForwardPendingRateControl(encoded_buffer);
+    BindRateControl(encoded_buffer);
 
     const bool is_keyframe = IsKeyframe(encoded_buffer->frame_type());
 
@@ -321,9 +324,21 @@ class PassthroughVideoEncoder final : public VideoEncoder {
   }
 
   void SetRates(const RateControlParameters& parameters) override {
-    webrtc::MutexLock lock(&rate_control_mutex_);
-    latest_rate_control_request_ = livekit::EncodedRateControlRequest{
-        true, parameters.bitrate.get_sum_bps(), parameters.framerate_fps};
+    std::shared_ptr<livekit::EncodedRateControlState> state;
+    {
+      webrtc::MutexLock lock(&rate_control_mutex_);
+      latest_rate_control_request_ = livekit::EncodedRateControlRequest{
+          true, parameters.bitrate.get_sum_bps(), parameters.framerate_fps};
+      state = rate_control_state_.lock();
+      if (state) {
+        state->Store(parameters.bitrate.get_sum_bps(), parameters.framerate_fps);
+      }
+    }
+    // Feedback must arrive even when no new encoded frame is being submitted.
+    // Never invoke application callbacks while holding the encoder mutex.
+    if (state) {
+      state->Notify();
+    }
   }
 
   EncoderInfo GetEncoderInfo() const override {
@@ -342,17 +357,25 @@ class PassthroughVideoEncoder final : public VideoEncoder {
   }
 
  private:
-  void ForwardPendingRateControl(
-      EncodedVideoFrameBuffer* encoded_buffer) {
-    std::optional<livekit::EncodedRateControlRequest> request;
+  void BindRateControl(EncodedVideoFrameBuffer* encoded_buffer) {
+    auto state = encoded_buffer->rate_control_state();
+    bool notify = false;
     {
       webrtc::MutexLock lock(&rate_control_mutex_);
-      request = latest_rate_control_request_;
-      latest_rate_control_request_.reset();
+      if (rate_control_state_.lock() == state) {
+        return;
+      }
+      rate_control_state_ = state;
+      if (state && latest_rate_control_request_) {
+        // Serialize initial delivery with SetRates so it cannot overwrite a
+        // newer target. Subsequent frames do not replay consumed feedback.
+        state->Store(latest_rate_control_request_->target_bitrate_bps,
+                     latest_rate_control_request_->framerate_fps);
+        notify = true;
+      }
     }
-    if (request.has_value()) {
-      encoded_buffer->set_rate_control_request(request->target_bitrate_bps,
-                                               request->framerate_fps);
+    if (notify) {
+      state->Notify();
     }
   }
 
@@ -365,6 +388,7 @@ class PassthroughVideoEncoder final : public VideoEncoder {
   std::vector<uint8_t> cached_sequence_header_obu_;
   webrtc::Mutex rate_control_mutex_;
   std::optional<livekit::EncodedRateControlRequest> latest_rate_control_request_;
+  std::weak_ptr<livekit::EncodedRateControlState> rate_control_state_;
 };
 
 }  // namespace

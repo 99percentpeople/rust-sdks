@@ -38,6 +38,31 @@ EncodedRateControlRequest EncodedRateControlState::Take() {
   return request;
 }
 
+void EncodedRateControlState::Notify() {
+  std::function<void()> wakeup;
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    wakeup = wakeup_;
+  }
+  if (wakeup) {
+    wakeup();
+  }
+}
+
+void EncodedRateControlState::SetWakeup(std::function<void()> wakeup) {
+  bool pending;
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    wakeup_.swap(wakeup);
+    pending = request_.has_request;
+  }
+  // Destroy replaced captures and call into Rust outside the mailbox lock.
+  wakeup = nullptr;
+  if (pending) {
+    Notify();
+  }
+}
+
 EncodedVideoFrameBuffer::EncodedVideoFrameBuffer(
     int width,
     int height,
@@ -109,6 +134,7 @@ void EncodedVideoFrameBuffer::set_rate_control_request(
     double framerate_fps) const {
   if (rate_control_state_) {
     rate_control_state_->Store(target_bitrate_bps, framerate_fps);
+    rate_control_state_->Notify();
   }
 }
 

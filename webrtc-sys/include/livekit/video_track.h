@@ -149,6 +149,8 @@ class VideoTrackSource {
   // capture loop.
   bool take_keyframe_request() const;
   EncodedRateControlRequest take_rate_control_request() const;
+  void set_rate_control_wakeup(rust::Box<RateControlWakeup> wakeup) const;
+  void clear_rate_control_wakeup() const;
 
   void set_packet_trailer_handler(
       std::shared_ptr<PacketTrailerHandler> handler) const;

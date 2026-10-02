@@ -18,6 +18,7 @@
 
 #include <atomic>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <mutex>
 
@@ -51,10 +52,14 @@ class EncodedRateControlState {
  public:
   void Store(uint64_t target_bitrate_bps, double framerate_fps);
   EncodedRateControlRequest Take();
+  // Store while serializing producers, then notify after releasing their locks.
+  void Notify();
+  void SetWakeup(std::function<void()> wakeup);
 
  private:
   std::mutex mutex_;
   EncodedRateControlRequest request_;
+  std::function<void()> wakeup_;
 };
 
 // A native WebRTC frame buffer carrying one encoded video access unit.
@@ -103,6 +108,11 @@ class EncodedVideoFrameBuffer : public webrtc::VideoFrameBuffer {
   // Updates the capture side with the latest encoder rate-control target.
   void set_rate_control_request(uint64_t target_bitrate_bps,
                                 double framerate_fps) const;
+
+  // Bind feedback once without retaining this frame or its encoded payload.
+  std::shared_ptr<EncodedRateControlState> rate_control_state() const {
+    return rate_control_state_;
+  }
 
   static EncodedVideoFrameBuffer* FromNative(webrtc::VideoFrameBuffer* buffer);
 

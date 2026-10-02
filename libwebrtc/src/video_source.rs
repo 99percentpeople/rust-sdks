@@ -55,6 +55,7 @@ impl RtcVideoSource {
 #[cfg(not(target_arch = "wasm32"))]
 pub mod native {
     use std::fmt::{Debug, Formatter};
+    use std::sync::Arc;
 
     use super::*;
     use crate::native::packet_trailer::PacketTrailerHandler;
@@ -171,6 +172,19 @@ pub mod native {
         /// pass-through encoder.
         pub fn take_rate_control_request(&self) -> Option<EncodedRateControl> {
             self.handle.take_rate_control_request()
+        }
+
+        /// Sets or clears the notification for [`Self::take_rate_control_request`].
+        ///
+        /// After the first encoded frame binds the source to its sender, rate
+        /// changes arrive without submitting another frame. Notifications may
+        /// coalesce; drain the latest request from the encoder worker. The callback
+        /// runs on WebRTC's thread and must not block, panic, or strongly retain
+        /// this source. Register before capture and clear on worker shutdown;
+        /// an in-flight notification may finish after clearing. Registration also
+        /// wakes for pending feedback. Use one encoded source per sender.
+        pub fn set_rate_control_wakeup(&self, wakeup: Option<Arc<dyn Fn() + Send + Sync>>) {
+            self.handle.set_rate_control_wakeup(wakeup);
         }
 
         /// Set the packet trailer handler used by this source.

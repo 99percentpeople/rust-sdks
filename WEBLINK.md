@@ -66,3 +66,15 @@ Bandwidth feedback, RTP pacing and transport congestion control remain active.
 When upgrading, additionally compare `webrtc-sys/src/passthrough_video_encoder.cpp`
 and `libwebrtc/src/native/video_source.rs`, and test full-frame motion under both
 constrained and sufficient bitrate budgets.
+
+External rate feedback binds to the source's mailbox on the first encoded frame.
+Subsequent `SetRates` calls publish directly, including zero-rate suspension and
+positive-rate recovery, without waiting for another frame. The pass-through keeps
+only a weak mailbox reference and clears it on release; it retains no frame payload.
+`NativeVideoSource::set_rate_control_wakeup` optionally notifies a worker to drain
+the latest request. Callbacks run outside encoder/mailbox locks, must stay short,
+and must not strongly capture their owning source. Clear the callback on every
+worker exit; an already-running notification may finish afterwards. Use one encoded
+source per sender. This does not change transport estimation, probing or pacing.
+On upgrades also compare `encoded_video_frame_buffer.{h,cpp}`, `video_track.{h,cpp,rs}`
+and the public `libwebrtc/src/video_source.rs` wrapper.

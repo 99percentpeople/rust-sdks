@@ -237,6 +237,23 @@ impl NativeVideoSource {
         })
     }
 
+    /// Sets or clears the notification for [`Self::take_rate_control_request`].
+    ///
+    /// After the first encoded frame binds the source to its sender, rate changes
+    /// arrive without submitting another frame. Notifications may coalesce; drain
+    /// the latest request from the encoder worker. The callback runs on WebRTC's
+    /// thread and must not block, panic, or strongly retain this source. Register
+    /// before capture and clear on worker shutdown; an in-flight notification may
+    /// finish after clearing. A request pending at registration also wakes the worker.
+    pub fn set_rate_control_wakeup(&self, wakeup: Option<Arc<dyn Fn() + Send + Sync>>) {
+        if let Some(wakeup) = wakeup {
+            self.sys_handle
+                .set_rate_control_wakeup(Box::new(vt_sys::RateControlWakeup::new(wakeup)));
+        } else {
+            self.sys_handle.clear_rate_control_wakeup();
+        }
+    }
+
     /// Set the packet trailer handler used by this source.
     ///
     /// When set, any frame captured with a `user_timestamp` value will
@@ -263,6 +280,35 @@ mod tests {
 
     use super::{keepalive_should_continue, raw_keepalive_task, NativeVideoSource};
     use crate::video_source::VideoResolution;
+
+    #[test]
+    fn rate_control_registration_releases_replaced_and_cancelled_callbacks() {
+        for clear_before_drop in [false, true] {
+            for _ in 0..3 {
+                let source =
+                    NativeVideoSource::new_encoded(VideoResolution { width: 16, height: 16 });
+                let owner = Arc::new(AtomicUsize::new(0));
+                let weak_owner = Arc::downgrade(&owner);
+                source.set_rate_control_wakeup(Some(Arc::new(move || {
+                    owner.fetch_add(1, Ordering::Relaxed);
+                })));
+                // Replacement drops the old callback even before a sender binds.
+                source.set_rate_control_wakeup(Some(Arc::new(|| {})));
+                assert!(weak_owner.upgrade().is_none());
+                let owner = Arc::new(AtomicUsize::new(0));
+                let weak_owner = Arc::downgrade(&owner);
+                source.set_rate_control_wakeup(Some(Arc::new(move || {
+                    owner.fetch_add(1, Ordering::Relaxed);
+                })));
+                if clear_before_drop {
+                    source.set_rate_control_wakeup(None);
+                    assert!(weak_owner.upgrade().is_none());
+                }
+                drop(source);
+                assert!(weak_owner.upgrade().is_none());
+            }
+        }
+    }
 
     #[test]
     fn keepalive_continues_before_first_capture() {
