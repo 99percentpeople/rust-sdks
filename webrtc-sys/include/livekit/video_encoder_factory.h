@@ -35,7 +35,7 @@ struct VideoEncoderBackendFactory {
 class VideoEncoderFactory : public webrtc::VideoEncoderFactory {
   class InternalFactory : public webrtc::VideoEncoderFactory {
    public:
-    InternalFactory();
+    explicit InternalFactory(bool external_hevc);
 
     std::vector<webrtc::SdpVideoFormat> GetSupportedFormats() const override;
 
@@ -50,11 +50,13 @@ class VideoEncoderFactory : public webrtc::VideoEncoderFactory {
 
    private:
     std::vector<VideoEncoderBackendFactory> factories_;
+    const bool external_hevc_;
   };
 
  public:
   explicit VideoEncoderFactory(
-      bool software_h264_external_frame_dropper = false);
+      bool software_h264_external_frame_dropper = false,
+      bool external_hevc = false);
 
   std::vector<webrtc::SdpVideoFormat> GetSupportedFormats() const override;
 
@@ -70,5 +72,6 @@ class VideoEncoderFactory : public webrtc::VideoEncoderFactory {
  private:
   std::unique_ptr<InternalFactory> internal_factory_;
   const bool software_h264_external_frame_dropper_;
+  const bool external_hevc_;
 };
 }  // namespace livekit_ffi

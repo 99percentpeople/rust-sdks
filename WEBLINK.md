@@ -47,3 +47,11 @@ native-to-browser RTP with an ordinary browser (no forced receiver field trials)
 Include scene changes, reduced bitrate limits and recovery; smooth output must
 not be obtained by bypassing congestion control. Remove the local forks when an
 upstream release exposes equivalent per-factory options.
+
+`PeerConnectionFactory::with_external_hevc_video_send_options` additionally opts
+into advertising the H265 Main 8-bit pass-through format for a verified application-owned
+encoder. The caller must select `VideoEncoderBackend::PreEncoded` for that sender.
+This is factory-local and adds neither a software encoder nor a decoder. Default
+factories, capability queries for software and ordinary sender options keep their
+existing behavior. Validate repeated factory/session creation, cancelled offers,
+real HEVC RTP decode, keyframe recovery and live settings on supported hardware.

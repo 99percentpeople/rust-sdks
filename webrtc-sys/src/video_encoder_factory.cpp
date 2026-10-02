@@ -200,6 +200,15 @@ bool IsSameCodecName(std::string_view a, std::string_view b) {
   return is_h265(a) && is_h265(b);
 }
 
+// Main 8-bit, single RTP stream. Avoid the implicit level 3.1 default
+// restricting negotiation to 720p30 for high-refresh desktop sharing.
+webrtc::SdpVideoFormat ExternalHevcFormat() {
+  return webrtc::SdpVideoFormat("H265", {{"profile-id", "1"},
+                                        {"tier-flag", "0"},
+                                        {"level-id", "156"},
+                                        {"tx-mode", "SRST"}});
+}
+
 // The pass-through backend forwards pre-encoded bytes, so SDP profile
 // parameters do not constrain it: match it by codec name only. Real
 // encoder backends keep exact profile matching.
@@ -347,7 +356,8 @@ rust::Vec<VideoEncoderBackend> video_encoder_backend_list() {
   return backends;
 }
 
-VideoEncoderFactory::InternalFactory::InternalFactory() {
+VideoEncoderFactory::InternalFactory::InternalFactory(bool external_hevc)
+    : external_hevc_(external_hevc) {
   AddBackendFactory(
       factories_,
       VideoEncoderBackend::PreEncoded,
@@ -409,7 +419,11 @@ VideoEncoderFactory::InternalFactory::GetSupportedFormats() const {
           [&](const webrtc::SdpVideoFormat& existing) {
             return IsSameCodecName(existing.name, format.name);
           });
-      if (codec_available) {
+      // H.265 can be supplied by a verified application-owned encoder.
+      // This opt-in is factory-local; ordinary factories retain real codecs only.
+      if (external_hevc_ && EqualsIgnoreAsciiCase(format.name, "H265")) {
+        formats.push_back(ExternalHevcFormat());
+      } else if (codec_available) {
         formats.push_back(format);
       }
     }
@@ -420,6 +434,10 @@ VideoEncoderFactory::InternalFactory::GetSupportedFormats() const {
 std::vector<webrtc::SdpVideoFormat>
 VideoEncoderFactory::InternalFactory::GetImplementations() const {
   std::vector<webrtc::SdpVideoFormat> formats;
+  if (external_hevc_) {
+    formats.push_back(WithBackend(ExternalHevcFormat(),
+                                  VideoEncoderBackend::PreEncoded));
+  }
   for (const auto& backend_factory : factories_) {
     if (backend_factory.backend == VideoEncoderBackend::PreEncoded) {
       continue;
@@ -445,6 +463,10 @@ VideoEncoderFactory::InternalFactory::QueryCodecSupport(
     std::optional<std::string> scalability_mode) const {
   auto requested_backend = BackendFromFormat(format);
   auto stripped_format = StripBackendParameter(format);
+  if (external_hevc_ && stripped_format.IsSameCodec(ExternalHevcFormat()) &&
+      (!requested_backend || *requested_backend == VideoEncoderBackend::Auto)) {
+    return {.is_supported = true, .is_power_efficient = true};
+  }
   if (requested_backend == VideoEncoderBackend::Software) {
     auto original_format =
         webrtc::FuzzyMatchSdpVideoFormat(Factory().GetSupportedFormats(),
@@ -591,10 +613,11 @@ VideoEncoderFactory::InternalFactory::Create(
 }
 
 VideoEncoderFactory::VideoEncoderFactory(
-    bool software_h264_external_frame_dropper)
+    bool software_h264_external_frame_dropper, bool external_hevc)
     : software_h264_external_frame_dropper_(
-          software_h264_external_frame_dropper) {
-  internal_factory_ = std::make_unique<InternalFactory>();
+          software_h264_external_frame_dropper),
+      external_hevc_(external_hevc) {
+  internal_factory_ = std::make_unique<InternalFactory>(external_hevc);
 }
 
 std::vector<webrtc::SdpVideoFormat> VideoEncoderFactory::GetSupportedFormats()
@@ -714,14 +737,22 @@ class EncodedFrameGuardEncoder final : public webrtc::VideoEncoder {
 std::unique_ptr<webrtc::VideoEncoder> VideoEncoderFactory::Create(
     const webrtc::Environment& env,
     const webrtc::SdpVideoFormat& format) {
+  // The first encoder can be created before the sender's selector runs.
+  // A factory advertising external H.265 must start directly on pass-through.
+  auto selected_format = format;
+  const auto backend = BackendFromFormat(format);
+  if (external_hevc_ && format.IsSameCodec(ExternalHevcFormat()) &&
+      (!backend || *backend == VideoEncoderBackend::Auto)) {
+    selected_format = WithBackend(format, VideoEncoderBackend::PreEncoded);
+  }
   std::unique_ptr<webrtc::VideoEncoder> encoder;
   if (format.IsCodecInList(internal_factory_->GetSupportedFormats())) {
     encoder = std::make_unique<webrtc::SimulcastEncoderAdapter>(
-        env, internal_factory_.get(), nullptr, format);
+        env, internal_factory_.get(), nullptr, selected_format);
   }
 
   if (encoder &&
-      BackendFromFormat(format) != VideoEncoderBackend::PreEncoded) {
+      BackendFromFormat(selected_format) != VideoEncoderBackend::PreEncoded) {
     encoder = std::make_unique<EncodedFrameGuardEncoder>(
         std::move(encoder),
         software_h264_external_frame_dropper_ &&

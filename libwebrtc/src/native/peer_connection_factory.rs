@@ -64,6 +64,7 @@ impl PeerConnectionFactory {
         max_playout_delay_ms: Option<u32>,
         pacing_factor: Option<f32>,
         software_h264_external_frame_dropper: bool,
+        external_hevc: bool,
     ) -> Self {
         ensure_log_sink();
         let sys_handle = sys_pcf::ffi::create_peer_connection_factory_with_video_send_timing(
@@ -71,6 +72,7 @@ impl PeerConnectionFactory {
             max_playout_delay_ms.map_or(-1, |ms| ms as i32),
             pacing_factor.unwrap_or(0.0),
             software_h264_external_frame_dropper,
+            external_hevc,
         );
         Self { sys_handle }
     }

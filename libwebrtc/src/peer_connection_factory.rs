@@ -122,6 +122,25 @@ impl PeerConnectionFactory {
     /// also be set in 10 ms units, and must not exceed the explicit maximum.
     #[cfg(not(target_arch = "wasm32"))]
     pub fn with_video_send_options(options: VideoSendOptions) -> Result<Self, RtcError> {
+        Self::with_video_send_policy(options, false)
+    }
+
+    /// Advertises H.265 Main 8-bit for externally encoded native frames in this factory.
+    /// Call only after verifying an external HEVC encoder is available, and set
+    /// each HEVC sender to [`crate::rtp_sender::VideoEncoderBackend::PreEncoded`].
+    /// This does not provide a software encoder or an HEVC decoder.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn with_external_hevc_video_send_options(
+        options: VideoSendOptions,
+    ) -> Result<Self, RtcError> {
+        Self::with_video_send_policy(options, true)
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn with_video_send_policy(
+        options: VideoSendOptions,
+        external_hevc: bool,
+    ) -> Result<Self, RtcError> {
         let VideoSendOptions {
             min_playout_delay_ms,
             max_playout_delay_ms,
@@ -145,6 +164,7 @@ impl PeerConnectionFactory {
                 max_playout_delay_ms,
                 pacing_factor,
                 software_h264_external_frame_dropper,
+                external_hevc,
             ),
         })
     }

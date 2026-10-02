@@ -102,6 +102,7 @@ pub mod ffi {
             max_playout_delay_ms: i32,
             pacing_factor: f32,
             software_h264_external_frame_dropper: bool,
+            external_hevc: bool,
         ) -> SharedPtr<PeerConnectionFactory>;
 
         fn create_peer_connection(
