@@ -256,9 +256,11 @@ webrtc::I444BufferInterface* I444Buffer::buffer() const {
 
 std::unique_ptr<I444Buffer> I444Buffer::scale(int scaled_width,
                                               int scaled_height) const {
-  auto result = webrtc::I444Buffer::Create(scaled_width, scaled_height);
-  result->CropAndScaleFrom(*buffer(), 0, 0, buffer()->width(), buffer()->height());
-  return std::make_unique<I444Buffer>(result);
+  webrtc::scoped_refptr<webrtc::VideoFrameBuffer> result =
+      buffer()->Scale(scaled_width, scaled_height);
+  return std::make_unique<I444Buffer>(
+      webrtc::scoped_refptr<webrtc::I444BufferInterface>(
+          const_cast<webrtc::I444BufferInterface*>(result->GetI444())));
 }
 
 I010Buffer::I010Buffer(webrtc::scoped_refptr<webrtc::I010BufferInterface> buffer)

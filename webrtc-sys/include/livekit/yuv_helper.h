@@ -25,12 +25,6 @@
 
 namespace livekit_ffi {
 
-static void gbr_to_argb(const uint8_t* g, int sg, const uint8_t* b, int sb,
-                        const uint8_t* r, int sr, uint8_t* dst, int stride,
-                        int width, int height) {
-  libyuv::MergeARGBPlane(r, sr, g, sg, b, sb, nullptr, 0, dst, stride, width, height);
-}
-
 #define THROW_ON_ERROR(ret)                                           \
   if (ret != 0) {                                                     \
     throw std::runtime_error("libyuv error: " + std::to_string(ret)); \
@@ -111,35 +105,20 @@ static void argb_to_i420(const uint8_t* src_argb,
                                     dst_stride_v, width, height));
 }
 
-static const libyuv::ArgbConstants* argb_matrix_constants(uint8_t matrix) {
-  switch (matrix) {
-    case 0: return &libyuv::kArgbI601Constants;
-    case 1: return &libyuv::kArgbJPEGConstants;
-    case 2: return &libyuv::kArgbH709Constants;
-    case 3: return &libyuv::kArgbF709Constants;
-    default: throw std::invalid_argument("Invalid RGB to YUV matrix");
-  }
-}
-
-static void argb_to_i444_matrix(const uint8_t* src, int stride,
-                               uint8_t* y, int sy, uint8_t* u, int su,
-                               uint8_t* v, int sv, int width, int height,
-                               uint8_t matrix) {
-  if (matrix == 4) {
-    // VP9 RGB/identity planes are G, B, R; no matrix or subsampling is applied.
-    libyuv::SplitARGBPlane(src, stride, v, sv, y, sy, u, su, nullptr, 0, width, height);
-  } else {
-    THROW_ON_ERROR(libyuv::ARGBToI444Matrix(src, stride, y, sy, u, su, v, sv,
-                                         argb_matrix_constants(matrix), width, height));
-  }
-}
-
 static void argb_to_i420_matrix(const uint8_t* src, int stride,
                                uint8_t* y, int sy, uint8_t* u, int su,
                                uint8_t* v, int sv, int width, int height,
                                uint8_t matrix) {
+  const libyuv::ArgbConstants* constants;
+  switch (matrix) {
+    case 0: constants = &libyuv::kArgbI601Constants; break;
+    case 1: constants = &libyuv::kArgbJPEGConstants; break;
+    case 2: constants = &libyuv::kArgbH709Constants; break;
+    case 3: constants = &libyuv::kArgbF709Constants; break;
+    default: throw std::invalid_argument("Invalid RGB to YUV matrix");
+  }
   THROW_ON_ERROR(libyuv::ARGBToI420Matrix(src, stride, y, sy, u, su, v, sv,
-                                       argb_matrix_constants(matrix), width, height));
+                                       constants, width, height));
 }
 
 static void abgr_to_i420(const uint8_t* src_abgr,
