@@ -103,6 +103,8 @@ class VideoTrackSource {
     VideoResolution video_resolution() const;
     bool on_captured_frame(const webrtc::VideoFrame& frame,
                            const FrameMetadata& frame_metadata);
+    bool set_color_space(const SourceColorSpace& color);
+    SourceColorSpace color_space() const;
 
     void set_packet_trailer_handler(
         std::shared_ptr<PacketTrailerHandler> handler);
@@ -121,6 +123,7 @@ class VideoTrackSource {
     mutable webrtc::Mutex mutex_;
     webrtc::TimestampAligner timestamp_aligner_;
     VideoResolution resolution_;
+    std::optional<webrtc::ColorSpace> color_space_;
     std::shared_ptr<PacketTrailerHandler> packet_trailer_handler_;
     std::shared_ptr<std::atomic<bool>> keyframe_request_flag_ =
         std::make_shared<std::atomic<bool>>(false);
@@ -148,6 +151,8 @@ class VideoTrackSource {
   // pass-through encoder (PLI/FIR or post-reconfigure). Poll from the
   // capture loop.
   bool take_keyframe_request() const;
+  bool set_color_space(const SourceColorSpace& color) const;
+  SourceColorSpace color_space() const;
   EncodedRateControlRequest take_rate_control_request() const;
   void set_rate_control_wakeup(rust::Box<RateControlWakeup> wakeup) const;
   void clear_rate_control_wakeup() const;

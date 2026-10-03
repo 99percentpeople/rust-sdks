@@ -14,7 +14,82 @@
 
 #![allow(clippy::too_many_arguments)]
 
+use crate::video_frame::VideoBuffer;
 use webrtc_sys::yuv_helper as yuv_sys;
+
+/// RGB-to-YUV conversion matrix and numeric range for 8-bit planar video.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum YuvMatrix {
+    /// BT.601 with limited range.
+    Bt601Limited,
+    /// BT.601 with full range.
+    Bt601Full,
+    /// BT.709 with limited range.
+    Bt709Limited,
+    /// BT.709 with full range.
+    Bt709Full,
+}
+
+/// Converts little-endian ARGB (BGRA bytes) into an allocated I420 buffer.
+///
+/// Uses the selected matrix/range without changing RGB primaries or transfer.
+/// Panics if the source dimensions, stride or slice cannot cover the output.
+pub fn argb_to_i420_with_matrix(
+    src: &[u8],
+    stride: u32,
+    dst: &mut crate::video_frame::I420Buffer,
+    matrix: YuvMatrix,
+) {
+    let (width, height) = (dst.width(), dst.height());
+    assert!(width > 0 && height > 0 && width <= i32::MAX as u32 && height <= i32::MAX as u32);
+    assert!(stride <= i32::MAX as u32 && u64::from(stride) >= u64::from(width) * 4);
+    let required = u64::from(stride) * u64::from(height - 1) + u64::from(width) * 4;
+    assert!(src.len() as u64 >= required, "source does not cover the frame");
+    let (sy, su, sv) = dst.strides();
+    let (y, u, v) = dst.data_mut();
+    // SAFETY: The source was bounded above; the owned I420 buffer supplies valid
+    // planes and strides for exactly these dimensions. libyuv finishes synchronously.
+    unsafe {
+        yuv_sys::ffi::argb_to_i420_matrix(
+            src.as_ptr(),
+            stride as i32,
+            y.as_mut_ptr(),
+            sy as i32,
+            u.as_mut_ptr(),
+            su as i32,
+            v.as_mut_ptr(),
+            sv as i32,
+            width as i32,
+            height as i32,
+            matrix as u8,
+        )
+        .expect("validated RGB to I420 conversion");
+    }
+}
+
+#[cfg(test)]
+mod matrix_tests {
+    use super::{argb_to_i420_with_matrix, YuvMatrix};
+    use crate::video_frame::I420Buffer;
+
+    #[test]
+    fn color_conversion_accepts_row_padding_without_reading_a_final_padding_row() {
+        let mut pixels = vec![0; 24]; // two 8-byte rows, with 8 bytes of padding between them
+        pixels[..8].fill(255);
+        pixels[16..].fill(255);
+        let mut output = I420Buffer::new(2, 2);
+        argb_to_i420_with_matrix(&pixels, 16, &mut output, YuvMatrix::Bt709Full);
+        assert!(output.data().0.iter().all(|value| *value == 255));
+    }
+
+    #[test]
+    #[should_panic(expected = "source does not cover the frame")]
+    fn color_conversion_rejects_a_truncated_source_before_entering_ffi() {
+        let mut output = I420Buffer::new(2, 2);
+        argb_to_i420_with_matrix(&[0; 15], 8, &mut output, YuvMatrix::Bt709Full);
+    }
+}
 
 fn argb_assert_safety(src: &[u8], src_stride: u32, _width: i32, height: i32) {
     let height_abs = height.unsigned_abs();

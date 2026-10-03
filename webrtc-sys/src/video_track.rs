@@ -20,6 +20,14 @@ use crate::{impl_thread_safety, video_frame::ffi::VideoFrame};
 
 #[cxx::bridge(namespace = "livekit_ffi")]
 pub mod ffi {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct SourceColorSpace {
+        pub present: bool,
+        pub primaries: u8,
+        pub transfer: u8,
+        pub matrix: u8,
+        pub full_range: bool,
+    }
     #[repr(i32)]
     pub enum ContentHint {
         None,
@@ -125,6 +133,8 @@ pub mod ffi {
             frame_metadata: &FrameMetadata,
         ) -> bool;
         fn take_keyframe_request(self: &VideoTrackSource) -> bool;
+        fn set_color_space(self: &VideoTrackSource, color: &SourceColorSpace) -> bool;
+        fn color_space(self: &VideoTrackSource) -> SourceColorSpace;
         fn take_rate_control_request(self: &VideoTrackSource) -> EncodedRateControlRequest;
         fn set_rate_control_wakeup(self: &VideoTrackSource, wakeup: Box<RateControlWakeup>);
         fn clear_rate_control_wakeup(self: &VideoTrackSource);

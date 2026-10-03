@@ -84,6 +84,20 @@ pub mod ffi {
             height: i32,
         ) -> Result<()>;
 
+        unsafe fn argb_to_i420_matrix(
+            src: *const u8,
+            src_stride: i32,
+            y: *mut u8,
+            sy: i32,
+            u: *mut u8,
+            su: i32,
+            v: *mut u8,
+            sv: i32,
+            width: i32,
+            height: i32,
+            matrix: u8,
+        ) -> Result<()>;
+
         unsafe fn abgr_to_i420(
             src_abgr: *const u8,
             src_stride_abgr: i32,

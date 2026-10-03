@@ -205,6 +205,7 @@ bool VideoTrackSource::InternalSource::on_captured_frame(
                 .set_video_frame_buffer(buffer)
                 .set_rotation(frame.rotation())
                 .set_timestamp_us(aligned_timestamp_us)
+                .set_color_space(color_space_ ? color_space_ : frame.color_space())
                 .build());
     return true;
   }
@@ -239,6 +240,7 @@ bool VideoTrackSource::InternalSource::on_captured_frame(
               .set_video_frame_buffer(buffer)
               .set_rotation(rotation)
               .set_timestamp_us(aligned_timestamp_us)
+              .set_color_space(color_space_ ? color_space_ : frame.color_space())
               .build());
 
   return true;
@@ -292,6 +294,39 @@ bool VideoTrackSource::capture_encoded_frame(
 bool VideoTrackSource::take_keyframe_request() const {
   return source_->keyframe_request_flag()->exchange(false,
                                                     std::memory_order_relaxed);
+}
+
+bool VideoTrackSource::InternalSource::set_color_space(const SourceColorSpace& color) {
+  std::optional<webrtc::ColorSpace> next;
+  if (color.present) {
+    next.emplace();
+    if (!next->set_primaries_from_uint8(color.primaries) ||
+        !next->set_transfer_from_uint8(color.transfer) ||
+        !next->set_matrix_from_uint8(color.matrix) ||
+        !next->set_range_from_uint8(color.full_range ? 2 : 1)) {
+      return false;
+    }
+  }
+  webrtc::MutexLock lock(&mutex_);
+  color_space_ = next;
+  return true;
+}
+
+bool VideoTrackSource::set_color_space(const SourceColorSpace& color) const {
+  return source_->set_color_space(color);
+}
+
+SourceColorSpace VideoTrackSource::InternalSource::color_space() const {
+  webrtc::MutexLock lock(&mutex_);
+  if (!color_space_) return SourceColorSpace{false, 2, 2, 2, false};
+  return SourceColorSpace{true, static_cast<uint8_t>(color_space_->primaries()),
+                         static_cast<uint8_t>(color_space_->transfer()),
+                         static_cast<uint8_t>(color_space_->matrix()),
+                         color_space_->range() == webrtc::ColorSpace::RangeID::kFull};
+}
+
+SourceColorSpace VideoTrackSource::color_space() const {
+  return source_->color_space();
 }
 
 EncodedRateControlRequest VideoTrackSource::take_rate_control_request() const {

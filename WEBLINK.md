@@ -40,6 +40,16 @@ in `crates/desktop-capture/src/media/windows.rs`. These settings preserve WebRTC
 bandwidth estimation, retransmission and congestion control. The playout hint
 does not impose a network deadline or guarantee end-to-end latency.
 
+`NativeVideoSource::set_color_space` adds an optional, validated H.273/CICP source
+override. Raw, adapted and pre-encoded frames preserve it through the native source;
+the pass-through encoder forwards it to RTP without changing encoded bytes. The
+caller must use matching RGB-to-YUV conversion and codec bitstream metadata.
+`argb_to_i420_with_matrix` exposes the bundled libyuv BT.601/BT.709 limited/full-range
+conversions with checked source dimensions and strides. This adds neither HDR nor
+10-bit encoding. Existing source constructors and capture methods remain compatible,
+and absent colour overrides preserve incoming metadata. On upgrades also compare
+`video_track.{h,cpp,rs}`, `yuv_helper.{h,rs}` and the public/native video-source wrappers.
+
 `with_screen_video_send_options` additionally enables periodic ALR bandwidth
 probing using `WebRTC-VideoRateControl`. The application's hardware pass-through
 and real-time H264 sources use camera mode and otherwise miss screenshare's

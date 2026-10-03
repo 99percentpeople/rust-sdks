@@ -97,6 +97,23 @@ async fn raw_keepalive_task(
 }
 
 impl NativeVideoSource {
+    /// Sets validated CICP metadata on this native source.
+    pub fn set_color_space(&self, color: Option<crate::video_source::VideoColorSpace>) -> bool {
+        let value = color.unwrap_or(crate::video_source::VideoColorSpace {
+            primaries: 2,
+            transfer: 2,
+            matrix: 2,
+            full_range: false,
+        });
+        self.sys_handle.set_color_space(&vt_sys::ffi::SourceColorSpace {
+            present: color.is_some(),
+            primaries: value.primaries,
+            transfer: value.transfer,
+            matrix: value.matrix,
+            full_range: value.full_range,
+        })
+    }
+
     pub fn new(resolution: VideoResolution, is_screencast: bool) -> NativeVideoSource {
         Self::new_inner(resolution, is_screencast, true)
     }
@@ -280,6 +297,33 @@ mod tests {
 
     use super::{keepalive_should_continue, raw_keepalive_task, NativeVideoSource};
     use crate::video_source::VideoResolution;
+
+    #[test]
+    fn color_metadata_rejects_invalid_values_and_releases_source_on_drop() {
+        use crate::video_source::VideoColorSpace;
+        for _ in 0..4 {
+            let source = NativeVideoSource::new_encoded(VideoResolution { width: 16, height: 16 });
+            let weak = Arc::downgrade(&source.captured_frames);
+            assert!(!source.sys_handle.color_space().present);
+            for matrix in [1, 6] {
+                for full_range in [false, true] {
+                    let color = VideoColorSpace { primaries: 1, transfer: 13, matrix, full_range };
+                    assert!(source.set_color_space(Some(color)));
+                    let before = source.sys_handle.color_space();
+                    assert_eq!(
+                        (before.primaries, before.transfer, before.matrix, before.full_range),
+                        (1, 13, matrix, full_range)
+                    );
+                    assert!(!source.set_color_space(Some(VideoColorSpace { matrix: 255, ..color })));
+                    assert_eq!(source.sys_handle.color_space(), before);
+                }
+            }
+            assert!(source.set_color_space(None));
+            assert!(!source.sys_handle.color_space().present);
+            drop(source);
+            assert!(weak.upgrade().is_none());
+        }
+    }
 
     #[test]
     fn rate_control_registration_releases_replaced_and_cancelled_callbacks() {

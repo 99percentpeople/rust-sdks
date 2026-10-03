@@ -29,6 +29,19 @@ pub struct EncodedRateControl {
     pub framerate_fps: f64,
 }
 
+/// H.273/CICP colour identifiers describing source pixels, without converting them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct VideoColorSpace {
+    /// Colour primaries identifier (for example, 1 for BT.709).
+    pub primaries: u8,
+    /// Transfer characteristic identifier (for example, 13 for sRGB).
+    pub transfer: u8,
+    /// YUV matrix identifier (for example, 1 for BT.709 or 6 for BT.601).
+    pub matrix: u8,
+    /// Whether YUV samples use the full numeric range.
+    pub full_range: bool,
+}
+
 impl Default for VideoResolution {
     // Default to 720p
     fn default() -> Self {
@@ -96,6 +109,15 @@ pub mod native {
 
         pub fn capture_frame<T: AsRef<dyn VideoBuffer>>(&self, frame: &VideoFrame<T>) -> bool {
             self.handle.capture_frame(frame)
+        }
+
+        /// Overrides colour metadata on raw and pre-encoded frames from this source.
+        ///
+        /// Call before publishing. Pixel conversion and codec bitstream tags must match.
+        /// `None` clears the override. Invalid CICP identifiers return `false` without
+        /// changing the existing override. This does not enable HDR or change bit depth.
+        pub fn set_color_space(&self, color: Option<VideoColorSpace>) -> bool {
+            self.handle.set_color_space(color)
         }
 
         /// Captures a Jetson DMA-buffer backed video frame.

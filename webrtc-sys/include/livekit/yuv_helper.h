@@ -105,6 +105,22 @@ static void argb_to_i420(const uint8_t* src_argb,
                                     dst_stride_v, width, height));
 }
 
+static void argb_to_i420_matrix(const uint8_t* src, int stride,
+                               uint8_t* y, int sy, uint8_t* u, int su,
+                               uint8_t* v, int sv, int width, int height,
+                               uint8_t matrix) {
+  const libyuv::ArgbConstants* constants;
+  switch (matrix) {
+    case 0: constants = &libyuv::kArgbI601Constants; break;
+    case 1: constants = &libyuv::kArgbJPEGConstants; break;
+    case 2: constants = &libyuv::kArgbH709Constants; break;
+    case 3: constants = &libyuv::kArgbF709Constants; break;
+    default: throw std::invalid_argument("Invalid RGB to YUV matrix");
+  }
+  THROW_ON_ERROR(libyuv::ARGBToI420Matrix(src, stride, y, sy, u, su, v, sv,
+                                       constants, width, height));
+}
+
 static void abgr_to_i420(const uint8_t* src_abgr,
                          int src_stride_abgr,
                          uint8_t* dst_y,
