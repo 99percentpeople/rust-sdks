@@ -86,6 +86,7 @@ fn main() {
         "src/dmabuf_video_frame_buffer.cpp",
         "src/encoded_video_frame_buffer.cpp",
         "src/video_encoder_factory.cpp",
+        "src/vp9_i444_encoder.cpp",
         "src/passthrough_video_encoder.cpp",
         "src/video_decoder_factory.cpp",
         "src/synthetic_audio_device.cpp",

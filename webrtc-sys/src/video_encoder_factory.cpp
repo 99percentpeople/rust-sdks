@@ -15,6 +15,7 @@
  */
 
 #include "livekit/video_encoder_factory.h"
+#include "livekit/vp9_i444_encoder.h"
 
 #include <algorithm>
 #include <atomic>
@@ -307,7 +308,8 @@ using Factory = webrtc::VideoEncoderFactoryTemplate<
 #if defined(RTC_USE_LIBAOM_AV1_ENCODER)
     webrtc::LibaomAv1EncoderTemplateAdapter,
 #endif
-    webrtc::LibvpxVp9EncoderTemplateAdapter>;
+    webrtc::LibvpxVp9EncoderTemplateAdapter,
+    Vp9I444EncoderAdapter>;
 
 rust::Vec<VideoEncoderBackend> video_encoder_backend_list() {
   rust::Vec<VideoEncoderBackend> backends;

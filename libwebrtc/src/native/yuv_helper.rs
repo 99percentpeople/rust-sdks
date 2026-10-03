@@ -68,10 +68,116 @@ pub fn argb_to_i420_with_matrix(
     }
 }
 
+/// Converts BGRA bytes into full-resolution 8-bit planes without chroma subsampling.
+///
+/// `Some(matrix)` produces YUV 4:4:4. `None` copies RGB into G/B/R planes, which
+/// require RGB/identity colour metadata and full range on the source and codec.
+/// Panics if the source stride or slice cannot cover the destination dimensions.
+pub fn argb_to_i444(
+    src: &[u8],
+    stride: u32,
+    dst: &mut crate::video_frame::I444Buffer,
+    matrix: Option<YuvMatrix>,
+) {
+    let (width, height) = (dst.width(), dst.height());
+    assert!(width > 0 && height > 0 && width <= i32::MAX as u32 && height <= i32::MAX as u32);
+    assert!(stride <= i32::MAX as u32 && u64::from(stride) >= u64::from(width) * 4);
+    let required = u64::from(stride) * u64::from(height - 1) + u64::from(width) * 4;
+    assert!(src.len() as u64 >= required, "source does not cover the frame");
+    let (sy, su, sv) = dst.strides();
+    let (y, u, v) = dst.data_mut();
+    // SAFETY: The source is bounded above. The owned buffer supplies valid full-size
+    // planes and strides; libyuv borrows them only for this synchronous conversion.
+    unsafe {
+        yuv_sys::ffi::argb_to_i444_matrix(
+            src.as_ptr(),
+            stride as i32,
+            y.as_mut_ptr(),
+            sy as i32,
+            u.as_mut_ptr(),
+            su as i32,
+            v.as_mut_ptr(),
+            sv as i32,
+            width as i32,
+            height as i32,
+            matrix.map_or(4, |m| m as u8),
+        )
+        .expect("validated full-chroma conversion");
+    }
+}
+
 #[cfg(test)]
 mod matrix_tests {
-    use super::{argb_to_i420_with_matrix, YuvMatrix};
-    use crate::video_frame::I420Buffer;
+    use super::{argb_to_i420_with_matrix, argb_to_i444, YuvMatrix};
+    use crate::video_frame::{I420Buffer, I444Buffer};
+
+    #[test]
+    fn full_chroma_keeps_adjacent_colors_and_rgb_planes_exact_with_padded_rows() {
+        let pixels =
+            [0, 0, 255, 255, 255, 0, 0, 255, 99, 99, 99, 99, 0, 255, 0, 255, 255, 255, 255, 255];
+        let mut output = I444Buffer::new(2, 2);
+        argb_to_i444(&pixels, 12, &mut output, None);
+        let mut packed = [99; 24];
+        super::gbr_to_argb(&output, &mut packed, 16);
+        assert_eq!(&packed[..8], &pixels[..8]);
+        assert_eq!(&packed[16..], &pixels[12..]);
+        assert_eq!(&packed[8..16], &[99; 8]);
+        assert_eq!(
+            output.data(),
+            (&[0, 0, 255, 255][..], &[0, 255, 0, 255][..], &[255, 0, 0, 255][..])
+        );
+        for matrix in [
+            YuvMatrix::Bt601Limited,
+            YuvMatrix::Bt601Full,
+            YuvMatrix::Bt709Limited,
+            YuvMatrix::Bt709Full,
+        ] {
+            argb_to_i444(&pixels, 12, &mut output, Some(matrix));
+            let (y, u, v) = output.data();
+            // A one-pixel primary must agree with a uniform 2x2 reference in
+            // every matrix, without averaging the neighboring primary's chroma.
+            for (i, bgra) in [
+                pixels[0..4].to_vec(),
+                pixels[4..8].to_vec(),
+                pixels[12..16].to_vec(),
+                pixels[16..20].to_vec(),
+            ]
+            .iter()
+            .enumerate()
+            {
+                let mut reference = I420Buffer::new(2, 2);
+                argb_to_i420_with_matrix(&bgra.repeat(4), 8, &mut reference, matrix);
+                let (ry, ru, rv) = reference.data();
+                for (actual, expected) in [y[i], u[i], v[i]].into_iter().zip([ry[0], ru[0], rv[0]])
+                {
+                    assert!(
+                        (i16::from(actual) - i16::from(expected)).abs() <= 2,
+                        "{matrix:?}, pixel {i}: actual {actual}, expected {expected}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "source does not cover the frame")]
+    fn full_chroma_rejects_truncated_input_before_ffi() {
+        argb_to_i444(&[0; 15], 8, &mut I444Buffer::new(2, 2), None);
+    }
+
+    #[test]
+    #[should_panic(expected = "destination does not cover the frame")]
+    fn full_chroma_rejects_truncated_packed_output_before_ffi() {
+        super::gbr_to_argb(&I444Buffer::new(2, 2), &mut [0; 15], 8);
+    }
+
+    #[test]
+    fn scaling_full_chroma_preserves_three_full_resolution_planes() {
+        let mut output = I444Buffer::new(4, 4);
+        argb_to_i444(&[11, 23, 37, 255].repeat(16), 16, &mut output, None);
+        let scaled = output.scale(2, 2);
+        assert_eq!(scaled.data(), (&[23; 4][..], &[11; 4][..], &[37; 4][..]));
+    }
 
     #[test]
     fn color_conversion_accepts_row_padding_without_reading_a_final_padding_row() {
@@ -88,6 +194,34 @@ mod matrix_tests {
     fn color_conversion_rejects_a_truncated_source_before_entering_ffi() {
         let mut output = I420Buffer::new(2, 2);
         argb_to_i420_with_matrix(&[0; 15], 8, &mut output, YuvMatrix::Bt709Full);
+    }
+}
+
+/// Packs G/B/R planes held in an I444 buffer into opaque BGRA bytes (libyuv ARGB).
+/// No YUV conversion is performed. Panics when the output stride/slice is too small.
+pub fn gbr_to_argb(src: &crate::video_frame::I444Buffer, dst: &mut [u8], stride: u32) {
+    let (width, height) = (src.width(), src.height());
+    assert!(width > 0 && height > 0 && width <= i32::MAX as u32 && height <= i32::MAX as u32);
+    assert!(stride <= i32::MAX as u32 && u64::from(stride) >= u64::from(width) * 4);
+    let required = u64::from(stride) * u64::from(height - 1) + u64::from(width) * 4;
+    assert!(dst.len() as u64 >= required, "destination does not cover the frame");
+    let (sg, sb, sr) = src.strides();
+    let (g, b, r) = src.data();
+    // SAFETY: owned planes cover the input; output bounds are checked above.
+    // libyuv borrows all buffers only for this synchronous copy.
+    unsafe {
+        yuv_sys::ffi::gbr_to_argb(
+            g.as_ptr(),
+            sg as i32,
+            b.as_ptr(),
+            sb as i32,
+            r.as_ptr(),
+            sr as i32,
+            dst.as_mut_ptr(),
+            stride as i32,
+            width as i32,
+            height as i32,
+        );
     }
 }
 

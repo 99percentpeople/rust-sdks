@@ -15,6 +15,7 @@
  */
 
 #include "livekit/video_track.h"
+#include "api/video/i444_buffer.h"
 
 #include <algorithm>
 #include <iostream>
@@ -218,15 +219,26 @@ bool VideoTrackSource::InternalSource::on_captured_frame(
   }
 
   if (adapted_width != frame.width() || adapted_height != frame.height()) {
-    buffer = buffer->CropAndScale(crop_x, crop_y, crop_width, crop_height,
-                                  adapted_width, adapted_height);
+    if (buffer->type() == webrtc::VideoFrameBuffer::Type::kI444) {
+      auto scaled = webrtc::I444Buffer::Create(adapted_width, adapted_height);
+      scaled->CropAndScaleFrom(*buffer->GetI444(), crop_x, crop_y, crop_width, crop_height);
+      buffer = scaled;
+    } else {
+      buffer = buffer->CropAndScale(crop_x, crop_y, crop_width, crop_height,
+                                    adapted_width, adapted_height);
+    }
   }
 
   webrtc::VideoRotation rotation = frame.rotation();
   if (apply_rotation() && rotation != webrtc::kVideoRotation_0) {
     // If the buffer is I420, webrtc::AdaptedVideoTrackSource will handle the
     // rotation for us.
-    buffer = buffer->ToI420();
+    if (buffer->type() == webrtc::VideoFrameBuffer::Type::kI444) {
+      buffer = webrtc::I444Buffer::Rotate(*buffer->GetI444(), rotation);
+      rotation = webrtc::kVideoRotation_0;
+    } else {
+      buffer = buffer->ToI420();
+    }
   }
 
   if (packet_trailer_handler_) {

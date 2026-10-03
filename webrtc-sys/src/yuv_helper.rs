@@ -19,6 +19,33 @@ pub mod ffi {
     unsafe extern "C++" {
         include!("livekit/yuv_helper.h");
 
+        unsafe fn gbr_to_argb(
+            g: *const u8,
+            sg: i32,
+            b: *const u8,
+            sb: i32,
+            r: *const u8,
+            sr: i32,
+            dst: *mut u8,
+            stride: i32,
+            width: i32,
+            height: i32,
+        );
+
+        unsafe fn argb_to_i444_matrix(
+            src: *const u8,
+            stride: i32,
+            y: *mut u8,
+            sy: i32,
+            u: *mut u8,
+            su: i32,
+            v: *mut u8,
+            sv: i32,
+            width: i32,
+            height: i32,
+            matrix: u8,
+        ) -> Result<()>;
+
         unsafe fn i420_to_argb(
             src_y: *const u8,
             src_stride_y: i32,

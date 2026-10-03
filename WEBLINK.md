@@ -19,6 +19,25 @@ against the previously observed maintenance tip, and refresh the consumer's
 pinned Git revision and lockfile after validation. Do not create feature branches
 for individual Weblink patches.
 
+Windows software factories additionally advertise VP9 Profile 1 with one spatial
+and temporal layer (L1T1). `vp9_i444_encoder.{h,cpp}` uses the engine's bundled
+libvpx synchronously with no lookahead; WebRTC still owns input frame dropping,
+bandwidth estimation and RTP pacing. The callback is borrowed by the encoder and
+never retained by asynchronous work. `Release`/destruction destroys the libvpx
+context and joins its workers, including after failed initialization/rate changes.
+Applications must select Profile 1 only for I444 input, exclude it from I420
+offers, and reject receivers that do not negotiate it. Startup I420 placeholders
+are discarded until full-chroma capture arrives. Multi-layer encoding is rejected.
+
+`argb_to_i444` uses an explicit YUV matrix or, with `None`, copies RGB to G/B/R
+planes requiring identity matrix and full-range colour metadata. `gbr_to_argb`
+packs those planes back into BGRA without conversion for local presentation.
+I444 source adaptation, scaling and rotation preserve full-resolution planes.
+On upgrades, test native-to-browser RGB and YUV 4:4:4 using single-pixel colour
+patterns, resize/reinitialize, rejected/cancelled negotiation and repeated teardown.
+Weblink's isolated `full_chroma_repeated_lifecycle_releases_native_handles` test
+checks native handle counts after repeated successful and partial sessions.
+
 Local changes expose `PeerConnectionFactory::with_video_send_options` and the
 timing-only convenience method `with_video_send_timing`:
 
