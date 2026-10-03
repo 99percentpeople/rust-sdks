@@ -1,7 +1,7 @@
 # Weblink native WebRTC branch
 
 This branch carries Weblink's native screen-sharing changes for Cargo Git
-dependencies. It is based on upstream `2dd762da4fdc8b73504983aff078d7824ea5d4ee`.
+dependencies. It is based on upstream `ccfb8770f26049b8c50a2b760c91eff682f043b9`.
 `libwebrtc` retains version 0.3.49 and its release metadata because Weblink pins
 that version; its executable sources are identical to the 0.3.50 release before
 these patches. `webrtc-sys` remains 0.3.47 and `webrtc-sys-build` remains 0.3.19.
@@ -9,6 +9,15 @@ The build helper and engine download/version logic are unchanged.
 
 Consumers must pin a full Git commit in Cargo.toml and commit Cargo.lock. Do not
 track the branch tip implicitly. Upstream license headers and notices remain.
+
+Keep only two long-lived branches: `main` follows the official LiveKit repository,
+and `weblink-native-media` carries all Weblink patches. When updating upstream,
+advance `main`, then rebase the complete Weblink patch series onto it so local
+changes always follow the official commits in a linear history. Verify the
+rebased series with `git range-diff`, publish with an explicit force-with-lease
+against the previously observed maintenance tip, and refresh the consumer's
+pinned Git revision and lockfile after validation. Do not create feature branches
+for individual Weblink patches.
 
 Local changes expose `PeerConnectionFactory::with_video_send_options` and the
 timing-only convenience method `with_video_send_timing`:
