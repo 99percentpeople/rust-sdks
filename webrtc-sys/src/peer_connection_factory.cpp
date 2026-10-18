@@ -248,7 +248,8 @@ PeerConnectionFactory::PeerConnectionFactory(
 
   dependencies.video_encoder_factory =
       std::make_unique<livekit_ffi::VideoEncoderFactory>(
-          software_h264_external_frame_dropper, external_hevc);
+          software_h264_external_frame_dropper, external_hevc,
+          software_vfr_frame_rate_);
   dependencies.video_decoder_factory =
       std::move(std::make_unique<livekit_ffi::VideoDecoderFactory>());
   dependencies.audio_encoder_factory = webrtc::CreateBuiltinAudioEncoderFactory();
@@ -348,6 +349,18 @@ bool PeerConnectionFactory::zero_playout_delay_enabled() const {
 
 bool PeerConnectionFactory::periodic_alr_probing_enabled() const {
   return webrtc::RateControlSettings(env_.field_trials()).UseAlrProbing();
+}
+
+bool PeerConnectionFactory::set_software_vfr_frame_rate(uint32_t frame_rate) const {
+  if (frame_rate > 1000) {
+    return false;
+  }
+  software_vfr_frame_rate_->store(frame_rate, std::memory_order_relaxed);
+  return true;
+}
+
+uint32_t PeerConnectionFactory::software_vfr_frame_rate() const {
+  return software_vfr_frame_rate_->load(std::memory_order_relaxed);
 }
 
 std::shared_ptr<PeerConnectionFactory> create_peer_connection_factory() {

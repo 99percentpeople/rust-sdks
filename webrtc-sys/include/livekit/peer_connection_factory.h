@@ -16,6 +16,9 @@
 
 #pragma once
 
+#include <atomic>
+#include <cstdint>
+
 #include "api/environment/environment_factory.h"
 #include "api/peer_connection_interface.h"
 #include "api/scoped_refptr.h"
@@ -85,6 +88,9 @@ class PeerConnectionFactory {
   std::shared_ptr<AudioDeviceController> audio_device() const;
   bool zero_playout_delay_enabled() const;
   bool periodic_alr_probing_enabled() const;
+  // Zero restores upstream policy. No stream or encoder is created by this call.
+  bool set_software_vfr_frame_rate(uint32_t frame_rate) const;
+  uint32_t software_vfr_frame_rate() const;
 
  private:
   // Declaration order matters: rtc_runtime_ must be declared before
@@ -96,6 +102,8 @@ class PeerConnectionFactory {
   std::shared_ptr<AudioDeviceController> audio_device_;
   webrtc::scoped_refptr<webrtc::PeerConnectionFactoryInterface> peer_factory_;
   webrtc::Environment env_;
+  const std::shared_ptr<std::atomic<uint32_t>> software_vfr_frame_rate_ =
+      std::make_shared<std::atomic<uint32_t>>(0);
 };
 
 std::shared_ptr<PeerConnectionFactory> create_peer_connection_factory();

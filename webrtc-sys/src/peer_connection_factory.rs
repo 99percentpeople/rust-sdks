@@ -97,6 +97,8 @@ pub mod ffi {
 
         fn zero_playout_delay_enabled(self: &PeerConnectionFactory) -> bool;
         fn periodic_alr_probing_enabled(self: &PeerConnectionFactory) -> bool;
+        fn set_software_vfr_frame_rate(self: &PeerConnectionFactory, frame_rate: u32) -> bool;
+        fn software_vfr_frame_rate(self: &PeerConnectionFactory) -> u32;
 
         fn create_peer_connection_factory_with_video_send_timing(
             min_playout_delay_ms: i32,

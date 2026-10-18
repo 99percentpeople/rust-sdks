@@ -613,10 +613,12 @@ VideoEncoderFactory::InternalFactory::Create(
 }
 
 VideoEncoderFactory::VideoEncoderFactory(
-    bool software_h264_external_frame_dropper, bool external_hevc)
+    bool software_h264_external_frame_dropper, bool external_hevc,
+    std::shared_ptr<std::atomic<uint32_t>> software_vfr_frame_rate)
     : software_h264_external_frame_dropper_(
           software_h264_external_frame_dropper),
-      external_hevc_(external_hevc) {
+      external_hevc_(external_hevc),
+      software_vfr_frame_rate_(std::move(software_vfr_frame_rate)) {
   internal_factory_ = std::make_unique<InternalFactory>(external_hevc);
 }
 
@@ -650,9 +652,11 @@ class EncodedFrameGuardEncoder final : public webrtc::VideoEncoder {
  public:
   explicit EncodedFrameGuardEncoder(
       std::unique_ptr<webrtc::VideoEncoder> encoder,
-      bool external_h264_frame_dropper)
+      bool external_h264_frame_dropper,
+      std::shared_ptr<std::atomic<uint32_t>> vfr_frame_rate)
       : encoder_(std::move(encoder)),
-        external_h264_frame_dropper_(external_h264_frame_dropper) {}
+        external_h264_frame_dropper_(external_h264_frame_dropper),
+        vfr_frame_rate_(std::move(vfr_frame_rate)) {}
 
   void SetFecControllerOverride(
       webrtc::FecControllerOverride* fec_controller_override) override {
@@ -661,6 +665,8 @@ class EncodedFrameGuardEncoder final : public webrtc::VideoEncoder {
 
   int InitEncode(const webrtc::VideoCodec* codec_settings,
                  const Settings& settings) override {
+    last_rates_.reset();
+    applied_vfr_frame_rate_ = 0;
     external_frame_dropper_active_ =
         external_h264_frame_dropper_ && codec_settings &&
         codec_settings->codecType == webrtc::kVideoCodecH264 &&
@@ -683,7 +689,10 @@ class EncodedFrameGuardEncoder final : public webrtc::VideoEncoder {
     return encoder_->RegisterEncodeCompleteCallback(callback);
   }
 
-  int32_t Release() override { return encoder_->Release(); }
+  int32_t Release() override {
+    last_rates_.reset();
+    return encoder_->Release();
+  }
 
   int32_t Encode(
       const webrtc::VideoFrame& frame,
@@ -699,11 +708,17 @@ class EncodedFrameGuardEncoder final : public webrtc::VideoEncoder {
       }
       return WEBRTC_VIDEO_CODEC_OK;
     }
+    // A live FPS change must reach the encoder before its next frame, even
+    // when WebRTC has not issued another network-rate update during idle.
+    if (last_rates_ && ConfiguredFrameRate() != applied_vfr_frame_rate_) {
+      ApplyRates();
+    }
     return encoder_->Encode(frame, frame_types);
   }
 
   void SetRates(const RateControlParameters& parameters) override {
-    encoder_->SetRates(parameters);
+    last_rates_ = parameters;
+    ApplyRates();
   }
 
   void OnPacketLossRateUpdate(float packet_loss_rate) override {
@@ -727,9 +742,29 @@ class EncodedFrameGuardEncoder final : public webrtc::VideoEncoder {
   }
 
  private:
+  uint32_t ConfiguredFrameRate() const {
+    return vfr_frame_rate_ ? vfr_frame_rate_->load(std::memory_order_relaxed) : 0;
+  }
+
+  void ApplyRates() {
+    auto adjusted = *last_rates_;
+    applied_vfr_frame_rate_ = ConfiguredFrameRate();
+    if (applied_vfr_frame_rate_ > 0) {
+      // Sparse capture is not a request to spend the entire bitrate on two
+      // frames per second. Size frames for motion without changing bitrate,
+      // bandwidth allocation, frame dropping, timestamps or RTP pacing.
+      adjusted.framerate_fps = std::max(
+          adjusted.framerate_fps, static_cast<double>(applied_vfr_frame_rate_));
+    }
+    encoder_->SetRates(adjusted);
+  }
+
   std::unique_ptr<webrtc::VideoEncoder> encoder_;
   const bool external_h264_frame_dropper_;
   bool external_frame_dropper_active_ = false;
+  const std::shared_ptr<std::atomic<uint32_t>> vfr_frame_rate_;
+  std::optional<RateControlParameters> last_rates_;
+  uint32_t applied_vfr_frame_rate_ = 0;
 };
 
 }  // namespace
@@ -756,7 +791,10 @@ std::unique_ptr<webrtc::VideoEncoder> VideoEncoderFactory::Create(
     encoder = std::make_unique<EncodedFrameGuardEncoder>(
         std::move(encoder),
         software_h264_external_frame_dropper_ &&
-            BackendFromFormat(format) == VideoEncoderBackend::Software);
+            BackendFromFormat(format) == VideoEncoderBackend::Software,
+        BackendFromFormat(format) == VideoEncoderBackend::Software
+            ? software_vfr_frame_rate_
+            : nullptr);
   }
 
   return encoder;

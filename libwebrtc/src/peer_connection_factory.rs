@@ -149,6 +149,28 @@ impl PeerConnectionFactory {
         Self::with_video_send_policy(options, external_hevc, true)
     }
 
+    /// Sizes software-encoded frames for motion while capture uses variable FPS.
+    ///
+    /// `Some(fps)` sets a 1..=1000 FPS floor for the encoder's per-frame bitrate
+    /// budget; it does not generate frames or change RTP FPS limits, bitrate
+    /// allocation, congestion control or pacing. Update it with the capture FPS
+    /// limit. The policy is shared by clones of this factory and applies only
+    /// to explicitly selected software encoders, including existing senders.
+    /// `None` restores upstream rate control, which is the default. Hardware
+    /// and pass-through encoders are unaffected.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn set_software_vfr_frame_rate(&self, frame_rate: Option<u32>) -> Result<(), RtcError> {
+        if frame_rate == Some(0)
+            || !self.handle.set_software_vfr_frame_rate(frame_rate.unwrap_or(0))
+        {
+            return Err(RtcError {
+                error_type: crate::RtcErrorType::Internal,
+                message: "Software VFR frame rate must be in 1..=1000".into(),
+            });
+        }
+        Ok(())
+    }
+
     #[cfg(not(target_arch = "wasm32"))]
     fn with_video_send_policy(
         options: VideoSendOptions,
@@ -212,6 +234,31 @@ impl PeerConnectionFactory {
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests {
     use super::{PeerConnectionFactory, VideoSendOptions};
+
+    #[test]
+    fn software_vfr_policy_is_shared_by_clones_and_isolated_between_factories() {
+        for _ in 0..3 {
+            let ordinary = PeerConnectionFactory::default();
+            let screen = PeerConnectionFactory::default();
+            let clone = screen.clone();
+            assert_eq!(ordinary.handle.software_vfr_frame_rate(), 0);
+            assert_eq!(screen.handle.software_vfr_frame_rate(), 0);
+            for fps in [1, 60, 5, 1000] {
+                screen.set_software_vfr_frame_rate(Some(fps)).unwrap();
+                assert_eq!(clone.handle.software_vfr_frame_rate(), fps);
+                assert_eq!(ordinary.handle.software_vfr_frame_rate(), 0);
+                for invalid in [0, 1001, u32::MAX] {
+                    assert!(clone.set_software_vfr_frame_rate(Some(invalid)).is_err());
+                    assert_eq!(screen.handle.software_vfr_frame_rate(), fps);
+                }
+            }
+            drop(screen);
+            clone.set_software_vfr_frame_rate(None).unwrap();
+            assert_eq!(clone.handle.software_vfr_frame_rate(), 0);
+            drop(clone);
+            assert_eq!(ordinary.handle.software_vfr_frame_rate(), 0);
+        }
+    }
 
     #[test]
     fn screen_probing_is_factory_local_and_does_not_change_default_policy() {

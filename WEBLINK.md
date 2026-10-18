@@ -59,6 +59,20 @@ codec preset, or replacing the chosen pacing policy. Default constructors keep
 their prior behavior. Validate idle-to-motion and congestion recovery separately
 from actual encoded bitrate: easy content may remain far below the budget.
 
+`PeerConnectionFactory::set_software_vfr_frame_rate(Some(fps))` separately opts
+explicit software senders into frame budgets sized for the configured motion FPS
+(1..=1000). The common encoder wrapper floors only `SetRates`' frame-rate hint;
+it preserves all bitrate allocations, pacing, congestion control and frame-drop
+policies. This prevents sparse input from producing oversized frames and long
+drop bursts when motion resumes. The application still owns VFR scheduling and
+RTP FPS limits. Update the hint with live capture limits; it is applied before
+the next encode even if no new bandwidth update arrives. `None` restores the
+upstream default. Hardware/pass-through and implicitly selected encoders retain
+their policy. Factory clones share an atomic value; independent factories do not.
+Encoders retain only this value, with no back-reference, task or callback to keep
+the factory alive. Validate idle/motion transitions, live FPS changes, receiver
+joins, defaults, clone isolation, invalid settings and repeated teardown.
+
 `PeerConnection::set_max_bitrate` sets the native transport's total media ceiling,
 separately from each RTP encoding's maximum. Apply it before negotiation and when
 changing the budget, including any audio allocation. With no finite transport

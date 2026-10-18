@@ -80,6 +80,15 @@ impl PeerConnectionFactory {
         Self { sys_handle }
     }
 
+    pub(crate) fn set_software_vfr_frame_rate(&self, frame_rate: u32) -> bool {
+        self.sys_handle.set_software_vfr_frame_rate(frame_rate)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn software_vfr_frame_rate(&self) -> u32 {
+        self.sys_handle.software_vfr_frame_rate()
+    }
+
     #[cfg(test)]
     pub(crate) fn periodic_alr_probing_enabled(&self) -> bool {
         self.sys_handle.periodic_alr_probing_enabled()

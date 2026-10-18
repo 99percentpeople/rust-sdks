@@ -16,6 +16,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -56,7 +57,8 @@ class VideoEncoderFactory : public webrtc::VideoEncoderFactory {
  public:
   explicit VideoEncoderFactory(
       bool software_h264_external_frame_dropper = false,
-      bool external_hevc = false);
+      bool external_hevc = false,
+      std::shared_ptr<std::atomic<uint32_t>> software_vfr_frame_rate = nullptr);
 
   std::vector<webrtc::SdpVideoFormat> GetSupportedFormats() const override;
 
@@ -73,5 +75,6 @@ class VideoEncoderFactory : public webrtc::VideoEncoderFactory {
   std::unique_ptr<InternalFactory> internal_factory_;
   const bool software_h264_external_frame_dropper_;
   const bool external_hevc_;
+  const std::shared_ptr<std::atomic<uint32_t>> software_vfr_frame_rate_;
 };
 }  // namespace livekit_ffi
