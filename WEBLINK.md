@@ -121,3 +121,16 @@ worker exit; an already-running notification may finish afterwards. Use one enco
 source per sender. This does not change transport estimation, probing or pacing.
 On upgrades also compare `encoded_video_frame_buffer.{h,cpp}`, `video_track.{h,cpp,rs}`
 and the public `libwebrtc/src/video_source.rs` wrapper.
+
+`EncodedAudioObserver` installs an opt-in sender audio pass-through before SDP
+negotiation. While enabled it copies bounded encoded payloads and their RTP and
+capture timestamps, forwards the original frame, then invokes a bounded application
+callback. Observers must not share a sender with another transform or cryptor.
+Pause disables copies; close/drop releases the callback without interrupting the
+sender. Peer teardown unregisters the transform's forwarding callback. Application
+callbacks must not retain their owning sender/observer or perform storage I/O.
+`NativeAudioSource::capture_frame_at` preserves capture timestamps for unbuffered
+10 ms PCM on `capture_clock_us`'s monotonic clock; buffered sources are rejected.
+Existing untimestamped capture remains available. When upgrading, compare
+`encoded_audio.{rs,h,cpp}`, `audio_track.{rs,h,cpp}` and both audio-source wrappers;
+run `libwebrtc/tests/encoded_audio.rs` to verify delivery and repeated cleanup.

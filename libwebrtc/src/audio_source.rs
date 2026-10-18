@@ -195,6 +195,21 @@ pub mod native {
             self.handle.capture_frame(frame).await
         }
 
+        /// Current WebRTC monotonic capture clock, in microseconds.
+        pub fn capture_clock_us() -> i64 {
+            ImpAudioSource::capture_clock_us()
+        }
+
+        /// Deliver an unbuffered 10 ms frame with its original capture time.
+        /// The timestamp must use [`Self::capture_clock_us`]'s clock.
+        pub fn capture_frame_at(
+            &self,
+            frame: &AudioFrame<'_>,
+            capture_time_us: i64,
+        ) -> Result<(), RtcError> {
+            self.handle.capture_frame_at(frame, capture_time_us)
+        }
+
         pub fn set_audio_options(&self, options: AudioSourceOptions) {
             self.handle.set_audio_options(options)
         }

@@ -89,6 +89,46 @@ impl NativeAudioSource {
         self.sys_handle.clear_buffer();
     }
 
+    /// Current WebRTC monotonic capture clock, in microseconds.
+    pub fn capture_clock_us() -> i64 {
+        webrtc_sys::encoded_audio::ffi::audio_capture_clock_us()
+    }
+
+    /// Deliver an unbuffered 10 ms frame with its original capture time.
+    /// `capture_time_us` must use the clock returned by [`Self::capture_clock_us`].
+    /// Buffered sources are rejected rather than silently losing synchronization.
+    pub fn capture_frame_at(
+        &self,
+        frame: &AudioFrame<'_>,
+        capture_time_us: i64,
+    ) -> Result<(), RtcError> {
+        if self.queue_size_samples != 0
+            || capture_time_us < 0
+            || frame.sample_rate != self.sample_rate
+            || frame.num_channels != self.num_channels
+            || frame.samples_per_channel != self.sample_rate / 100
+            || frame.data.len() != (self.sample_rate / 100 * self.num_channels) as usize
+        {
+            return Err(RtcError {
+                error_type: RtcErrorType::InvalidState,
+                message: "timestamped capture requires matching unbuffered 10 ms audio".to_owned(),
+            });
+        }
+        if !self.sys_handle.capture_frame_at(
+            frame.data.as_ref(),
+            self.sample_rate,
+            self.num_channels,
+            (self.sample_rate / 100) as usize,
+            capture_time_us,
+        ) {
+            return Err(RtcError {
+                error_type: RtcErrorType::InvalidState,
+                message: "timestamped audio capture failed".to_owned(),
+            });
+        }
+        Ok(())
+    }
+
     pub async fn capture_frame(&self, frame: &AudioFrame<'_>) -> Result<(), RtcError> {
         if self.sample_rate != frame.sample_rate || self.num_channels != frame.num_channels {
             return Err(RtcError {

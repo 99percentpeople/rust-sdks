@@ -197,8 +197,20 @@ bool AudioTrackSource::InternalSource::capture_frame(
     uint32_t number_of_channels,
     size_t number_of_frames,
     const SourceContext* ctx,
-    void (*on_complete)(const SourceContext*)) {
+    void (*on_complete)(const SourceContext*),
+    std::optional<int64_t> capture_timestamp_ms) {
   webrtc::MutexLock lock(&mutex_);
+
+  // The timestamped FFI entry point is safe: validate the full sample extent
+  // here as well as in the public Rust wrapper before handing it to a sink.
+  if (capture_timestamp_ms &&
+      (queue_size_samples_ || !sample_rate || !number_of_channels ||
+       sample_rate != sample_rate_ || number_of_channels != num_channels_ ||
+       number_of_frames != sample_rate / 100 ||
+       data.size() / number_of_channels != number_of_frames ||
+       data.size() % number_of_channels != 0)) {
+    return false;
+  }
 
   if (queue_size_samples_) {
     int available =
@@ -222,7 +234,7 @@ bool AudioTrackSource::InternalSource::capture_frame(
     // Fast path: capture directly when the queue buffer is 0 (frame size must be 10ms)
     for (auto sink : sinks_)
       sink->OnData(data.data(), sizeof(int16_t) * 8, sample_rate,
-                   number_of_channels, number_of_frames);
+                   number_of_channels, number_of_frames, capture_timestamp_ms);
   }
 
   return true;
@@ -295,6 +307,14 @@ bool AudioTrackSource::capture_frame(
     void (*on_complete)(const SourceContext*)) const {
   return source_->capture_frame(audio_data, sample_rate, number_of_channels,
                                 number_of_frames, ctx, on_complete);
+}
+
+bool AudioTrackSource::capture_frame_at(
+    rust::Slice<const int16_t> data, uint32_t rate, uint32_t channels,
+    size_t frames, int64_t capture_timestamp_us) const {
+  if (capture_timestamp_us < 0) return false;
+  return source_->capture_frame(data, rate, channels, frames, nullptr,
+      [](const SourceContext*) {}, capture_timestamp_us / 1000);
 }
 
 void AudioTrackSource::clear_buffer() const {

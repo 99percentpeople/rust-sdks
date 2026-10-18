@@ -59,6 +59,14 @@ pub mod ffi {
             userdata: *const SourceContext,
             on_complete: CompleteCallback,
         ) -> bool;
+        fn capture_frame_at(
+            self: &AudioTrackSource,
+            data: &[i16],
+            sample_rate: u32,
+            nb_channels: u32,
+            nb_frames: usize,
+            capture_timestamp_us: i64,
+        ) -> bool;
         fn clear_buffer(self: &AudioTrackSource);
         fn audio_options(self: &AudioTrackSource) -> AudioSourceOptions;
         fn set_audio_options(self: &AudioTrackSource, options: &AudioSourceOptions);

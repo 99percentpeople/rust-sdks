@@ -17,6 +17,7 @@
 #pragma once
 
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include "api/audio/audio_frame.h"
@@ -122,7 +123,8 @@ class AudioTrackSource {
                        uint32_t number_of_channels,
                        size_t number_of_frames,
                        const SourceContext* ctx,
-                       void (*on_complete)(const SourceContext*));
+                       void (*on_complete)(const SourceContext*),
+                       std::optional<int64_t> capture_timestamp_ms = std::nullopt);
 
     void clear_buffer();
 
@@ -170,6 +172,10 @@ class AudioTrackSource {
                      size_t number_of_frames,
                      const SourceContext* ctx,
                      CompleteCallback on_complete) const;
+
+  bool capture_frame_at(rust::Slice<const int16_t> audio_data,
+                        uint32_t sample_rate, uint32_t number_of_channels,
+                        size_t number_of_frames, int64_t capture_timestamp_us) const;
 
   void clear_buffer() const;
 
