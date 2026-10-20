@@ -58,7 +58,8 @@ class VideoEncoderFactory : public webrtc::VideoEncoderFactory {
   explicit VideoEncoderFactory(
       bool software_h264_external_frame_dropper = false,
       bool external_hevc = false,
-      std::shared_ptr<std::atomic<uint32_t>> software_vfr_frame_rate = nullptr);
+      std::shared_ptr<std::atomic<uint32_t>> software_vfr_frame_rate = nullptr,
+      bool pre_encoded = false);
 
   std::vector<webrtc::SdpVideoFormat> GetSupportedFormats() const override;
 
@@ -76,5 +77,6 @@ class VideoEncoderFactory : public webrtc::VideoEncoderFactory {
   const bool software_h264_external_frame_dropper_;
   const bool external_hevc_;
   const std::shared_ptr<std::atomic<uint32_t>> software_vfr_frame_rate_;
+  const bool pre_encoded_;
 };
 }  // namespace livekit_ffi

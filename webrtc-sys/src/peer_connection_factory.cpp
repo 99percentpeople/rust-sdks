@@ -212,7 +212,7 @@ PeerConnectionFactory::PeerConnectionFactory(
     int32_t max_send_playout_delay_ms,
     float video_pacing_factor,
     bool software_h264_external_frame_dropper, bool external_hevc,
-    bool periodic_alr_probing)
+    bool periodic_alr_probing, bool pre_encoded)
     : rtc_runtime_(rtc_runtime),
       env_(CreateEnvironment(zero_playout_delay, enable_warp,
                              min_send_playout_delay_ms, max_send_playout_delay_ms,
@@ -249,7 +249,7 @@ PeerConnectionFactory::PeerConnectionFactory(
   dependencies.video_encoder_factory =
       std::make_unique<livekit_ffi::VideoEncoderFactory>(
           software_h264_external_frame_dropper, external_hevc,
-          software_vfr_frame_rate_);
+          software_vfr_frame_rate_, pre_encoded);
   dependencies.video_decoder_factory =
       std::move(std::make_unique<livekit_ffi::VideoDecoderFactory>());
   dependencies.audio_encoder_factory = webrtc::CreateBuiltinAudioEncoderFactory();
@@ -384,23 +384,24 @@ std::shared_ptr<PeerConnectionFactory>
 create_peer_connection_factory_with_video_send_timing(
     int32_t min_playout_delay_ms, int32_t max_playout_delay_ms,
     float pacing_factor,
-    bool software_h264_external_frame_dropper, bool external_hevc) {
-  return std::make_shared<PeerConnectionFactory>(RtcRuntime::create(), false,
-                                                false, min_playout_delay_ms,
-                                                max_playout_delay_ms,
-                                                pacing_factor,
-                                                software_h264_external_frame_dropper, external_hevc);
+    bool software_h264_external_frame_dropper, bool external_hevc,
+    bool pre_encoded) {
+  return std::make_shared<PeerConnectionFactory>(
+      RtcRuntime::create(), false, false, min_playout_delay_ms,
+      max_playout_delay_ms, pacing_factor,
+      software_h264_external_frame_dropper, external_hevc, false, pre_encoded);
 }
 
 std::shared_ptr<PeerConnectionFactory>
 create_peer_connection_factory_with_screen_video_send_options(
     int32_t min_playout_delay_ms, int32_t max_playout_delay_ms,
     float pacing_factor,
-    bool software_h264_external_frame_dropper, bool external_hevc) {
+    bool software_h264_external_frame_dropper, bool external_hevc,
+    bool pre_encoded) {
   return std::make_shared<PeerConnectionFactory>(
       RtcRuntime::create(), false, false, min_playout_delay_ms,
       max_playout_delay_ms, pacing_factor,
-      software_h264_external_frame_dropper, external_hevc, true);
+      software_h264_external_frame_dropper, external_hevc, true, pre_encoded);
 }
 
 }  // namespace livekit_ffi

@@ -122,7 +122,7 @@ impl PeerConnectionFactory {
     /// also be set in 10 ms units, and must not exceed the explicit maximum.
     #[cfg(not(target_arch = "wasm32"))]
     pub fn with_video_send_options(options: VideoSendOptions) -> Result<Self, RtcError> {
-        Self::with_video_send_policy(options, false, false)
+        Self::with_video_send_policy(options, false, false, false)
     }
 
     /// Advertises H.265 Main 8-bit for externally encoded native frames in this factory.
@@ -133,7 +133,7 @@ impl PeerConnectionFactory {
     pub fn with_external_hevc_video_send_options(
         options: VideoSendOptions,
     ) -> Result<Self, RtcError> {
-        Self::with_video_send_policy(options, true, false)
+        Self::with_video_send_policy(options, true, false, false)
     }
 
     /// Creates a screen sender with periodic bandwidth probes during low activity.
@@ -146,7 +146,21 @@ impl PeerConnectionFactory {
         options: VideoSendOptions,
         external_hevc: bool,
     ) -> Result<Self, RtcError> {
-        Self::with_video_send_policy(options, external_hevc, true)
+        Self::with_video_send_policy(options, external_hevc, true, false)
+    }
+
+    /// Creates a screen factory whose initial video backend is pass-through.
+    ///
+    /// Use only with externally encoded sources. This avoids dropping the first
+    /// encoded keyframe while a sender selector switches from a raw encoder.
+    /// Explicit sender backend selections still take precedence. `external_hevc`
+    /// has the same capability requirements as [`Self::with_screen_video_send_options`].
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn with_pre_encoded_screen_video_send_options(
+        options: VideoSendOptions,
+        external_hevc: bool,
+    ) -> Result<Self, RtcError> {
+        Self::with_video_send_policy(options, external_hevc, true, true)
     }
 
     /// Sizes software-encoded frames for motion while capture uses variable FPS.
@@ -176,6 +190,7 @@ impl PeerConnectionFactory {
         options: VideoSendOptions,
         external_hevc: bool,
         periodic_alr_probing: bool,
+        pre_encoded: bool,
     ) -> Result<Self, RtcError> {
         let VideoSendOptions { min_playout_delay_ms, max_playout_delay_ms, pacing_factor, .. } =
             options;
@@ -195,6 +210,7 @@ impl PeerConnectionFactory {
                 options,
                 external_hevc,
                 periodic_alr_probing,
+                pre_encoded,
             ),
         })
     }
@@ -275,6 +291,43 @@ mod tests {
             assert!(screen.handle.periodic_alr_probing_enabled());
             drop(screen);
             assert!(!ordinary.handle.periodic_alr_probing_enabled());
+        }
+    }
+
+    #[test]
+    fn pre_encoded_screen_policy_keeps_hevc_opt_in_and_validates_timing() {
+        use crate::MediaType;
+        let has_hevc = |factory: &PeerConnectionFactory| {
+            factory
+                .get_rtp_sender_capabilities(MediaType::Video)
+                .codecs
+                .iter()
+                .any(|codec| codec.mime_type.eq_ignore_ascii_case("video/h265"))
+        };
+        for _ in 0..3 {
+            let ordinary = PeerConnectionFactory::default();
+            let before = has_hevc(&ordinary);
+            let h264 = PeerConnectionFactory::with_pre_encoded_screen_video_send_options(
+                VideoSendOptions::default(),
+                false,
+            )
+            .unwrap();
+            let hevc = PeerConnectionFactory::with_pre_encoded_screen_video_send_options(
+                VideoSendOptions::default(),
+                true,
+            )
+            .unwrap();
+            assert!(h264.handle.periodic_alr_probing_enabled());
+            assert_eq!(has_hevc(&h264), before);
+            assert!(has_hevc(&hevc));
+            drop(hevc);
+            drop(h264);
+            assert_eq!(has_hevc(&ordinary), before);
+            assert!(PeerConnectionFactory::with_pre_encoded_screen_video_send_options(
+                VideoSendOptions { max_playout_delay_ms: Some(1), ..Default::default() },
+                false,
+            )
+            .is_err());
         }
     }
 

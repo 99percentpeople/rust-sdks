@@ -106,6 +106,7 @@ pub mod ffi {
             pacing_factor: f32,
             software_h264_external_frame_dropper: bool,
             external_hevc: bool,
+            pre_encoded: bool,
         ) -> SharedPtr<PeerConnectionFactory>;
 
         fn create_peer_connection_factory_with_screen_video_send_options(
@@ -114,6 +115,7 @@ pub mod ffi {
             pacing_factor: f32,
             software_h264_external_frame_dropper: bool,
             external_hevc: bool,
+            pre_encoded: bool,
         ) -> SharedPtr<PeerConnectionFactory>;
 
         fn create_peer_connection(

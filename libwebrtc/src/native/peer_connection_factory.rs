@@ -63,6 +63,7 @@ impl PeerConnectionFactory {
         options: crate::peer_connection_factory::VideoSendOptions,
         external_hevc: bool,
         periodic_alr_probing: bool,
+        pre_encoded: bool,
     ) -> Self {
         ensure_log_sink();
         let create = if periodic_alr_probing {
@@ -76,6 +77,7 @@ impl PeerConnectionFactory {
             options.pacing_factor.unwrap_or(0.0),
             options.software_h264_external_frame_dropper,
             external_hevc,
+            pre_encoded,
         );
         Self { sys_handle }
     }

@@ -614,11 +614,13 @@ VideoEncoderFactory::InternalFactory::Create(
 
 VideoEncoderFactory::VideoEncoderFactory(
     bool software_h264_external_frame_dropper, bool external_hevc,
-    std::shared_ptr<std::atomic<uint32_t>> software_vfr_frame_rate)
+    std::shared_ptr<std::atomic<uint32_t>> software_vfr_frame_rate,
+    bool pre_encoded)
     : software_h264_external_frame_dropper_(
           software_h264_external_frame_dropper),
       external_hevc_(external_hevc),
-      software_vfr_frame_rate_(std::move(software_vfr_frame_rate)) {
+      software_vfr_frame_rate_(std::move(software_vfr_frame_rate)),
+      pre_encoded_(pre_encoded) {
   internal_factory_ = std::make_unique<InternalFactory>(external_hevc);
 }
 
@@ -629,6 +631,19 @@ std::vector<webrtc::SdpVideoFormat> VideoEncoderFactory::GetSupportedFormats()
 
 std::vector<webrtc::SdpVideoFormat> VideoEncoderFactory::GetImplementations()
     const {
+  if (pre_encoded_) {
+    // WebRTC chooses its initial implementation from this list before invoking
+    // the sender selector. Returning software-tagged formats here would bypass
+    // the untagged-format default in Create() and discard the first keyframe.
+    PassthroughVideoEncoderFactory passthrough;
+    std::vector<webrtc::SdpVideoFormat> formats;
+    for (const auto& format : internal_factory_->GetSupportedFormats()) {
+      if (passthrough.QueryCodecSupport(format, std::nullopt).is_supported) {
+        formats.push_back(WithBackend(format, VideoEncoderBackend::PreEncoded));
+      }
+    }
+    return formats;
+  }
   return internal_factory_->GetImplementations();
 }
 
@@ -773,10 +788,11 @@ std::unique_ptr<webrtc::VideoEncoder> VideoEncoderFactory::Create(
     const webrtc::Environment& env,
     const webrtc::SdpVideoFormat& format) {
   // The first encoder can be created before the sender's selector runs.
-  // A factory advertising external H.265 must start directly on pass-through.
+  // External screen senders must preserve that first encoded keyframe.
   auto selected_format = format;
   const auto backend = BackendFromFormat(format);
-  if (external_hevc_ && format.IsSameCodec(ExternalHevcFormat()) &&
+  if ((pre_encoded_ ||
+       (external_hevc_ && format.IsSameCodec(ExternalHevcFormat()))) &&
       (!backend || *backend == VideoEncoderBackend::Auto)) {
     selected_format = WithBackend(format, VideoEncoderBackend::PreEncoded);
   }

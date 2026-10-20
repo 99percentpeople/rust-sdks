@@ -60,7 +60,7 @@ class PeerConnectionFactory {
                         int32_t max_send_playout_delay_ms,
                         float video_pacing_factor,
                         bool software_h264_external_frame_dropper, bool external_hevc,
-                        bool periodic_alr_probing = false);
+                        bool periodic_alr_probing = false, bool pre_encoded = false);
   ~PeerConnectionFactory();
 
   std::shared_ptr<PeerConnection> create_peer_connection(
@@ -116,10 +116,12 @@ std::shared_ptr<PeerConnectionFactory>
 create_peer_connection_factory_with_video_send_timing(
     int32_t min_playout_delay_ms, int32_t max_playout_delay_ms,
     float pacing_factor,
-    bool software_h264_external_frame_dropper, bool external_hevc);
+    bool software_h264_external_frame_dropper, bool external_hevc,
+    bool pre_encoded);
 std::shared_ptr<PeerConnectionFactory>
 create_peer_connection_factory_with_screen_video_send_options(
     int32_t min_playout_delay_ms, int32_t max_playout_delay_ms,
     float pacing_factor,
-    bool software_h264_external_frame_dropper, bool external_hevc);
+    bool software_h264_external_frame_dropper, bool external_hevc,
+    bool pre_encoded);
 }  // namespace livekit_ffi

@@ -148,3 +148,13 @@ callbacks must not retain their owning sender/observer or perform storage I/O.
 Existing untimestamped capture remains available. When upgrading, compare
 `encoded_audio.{rs,h,cpp}`, `audio_track.{rs,h,cpp}` and both audio-source wrappers;
 run `libwebrtc/tests/encoded_audio.rs` to verify delivery and repeated cleanup.
+
+`with_pre_encoded_screen_video_send_options` opts external screen sources into
+pass-through at initial encoder creation, before the sender backend selector's
+first callback. Explicit backend selections still override this default; ordinary
+factories retain upstream startup behavior. HEVC advertisement remains a separate
+opt-in and no decoder is added. The source's existing rate-control wakeup also
+signals keyframe requests so retained static pixels can be submitted promptly.
+Callbacks must obey the same short, non-owning notification contract. Validate
+first-keyframe RTP delivery, delayed SDP/ICE readiness, static joins, software
+senders, CPU fallback, and repeated source/peer teardown.

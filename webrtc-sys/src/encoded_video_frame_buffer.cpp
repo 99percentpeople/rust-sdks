@@ -126,6 +126,11 @@ EncodedVideoFrameBuffer::CropAndScale(int /* offset_x */,
 void EncodedVideoFrameBuffer::request_keyframe() const {
   if (keyframe_request_flag_) {
     keyframe_request_flag_->store(true, std::memory_order_relaxed);
+    // Static sources may have no next frame to poll the request. Wake their
+    // producer immediately, after publishing the bit and without holding locks.
+    if (rate_control_state_) {
+      rate_control_state_->Notify();
+    }
   }
 }
 
